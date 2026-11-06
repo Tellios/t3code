@@ -399,6 +399,7 @@ export function NewTaskFlowProvider(
 
   const resolveWorkspaceSelection = (selection: ComposerDraftWorkspaceSelection | undefined) =>
     resolveNewTaskDraftWorkspace({
+      defaultBranch: projectSettings.settings.defaultBranch,
       selection,
       canChooseWorkspace,
       defaultMode: defaultWorkspaceMode,

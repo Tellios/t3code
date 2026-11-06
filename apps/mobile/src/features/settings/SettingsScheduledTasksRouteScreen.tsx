@@ -80,6 +80,7 @@ import {
 } from "./scheduledTaskDraft";
 import { settingsTargetsForProject } from "./settings-environment-filter.logic";
 import { useScheduledTaskEditor } from "./scheduled-task-editor";
+import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import {
   discardScheduledTaskEditor,
   markScheduledTaskEditorSaved,
@@ -881,6 +882,10 @@ function TaskForm({
               setDraft({
                 ...draft,
                 projectId: project.id,
+                baseRef: config
+                  ? (resolveProjectSettings(config.settings, project.id).settings.defaultBranch ??
+                    "main")
+                  : "main",
                 modelSelection: keepsExplicitModel
                   ? draft.modelSelection
                   : scheduledTaskDefaultModel(config, project),

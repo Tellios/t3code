@@ -1,5 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentId } from "@t3tools/contracts";
+import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { useMemo, useCallback, type Dispatch, type SetStateAction } from "react";
 
 import { useProjects, useServerConfigs } from "../../state/entities";
@@ -42,9 +43,14 @@ export function useScheduledTaskEditor() {
           (project) => project.pinnedAt != null && project.archivedAt == null,
         ) ??
         environmentProjects.find((project) => project.archivedAt == null);
+      const config = configs.get(environmentId);
       return createDraft(
         project?.id ?? null,
         scheduledTaskDefaultModel(configs.get(environmentId) ?? null, project ?? null),
+        config
+          ? (resolveProjectSettings(config.settings, project?.id ?? null).settings.defaultBranch ??
+              "main")
+          : "main",
       );
     },
     [configs, projects, selectedGroup],
