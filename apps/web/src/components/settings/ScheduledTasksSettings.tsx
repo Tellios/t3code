@@ -23,6 +23,7 @@ import type {
   ScheduledTaskThreadMode,
   ScheduledTaskUpsertInput,
   ScheduledTaskWebhookDeliverySummary,
+  ServerSettings,
   ThreadId,
 } from "@t3tools/contracts";
 import {
@@ -70,6 +71,7 @@ import { EMPTY_SERVER_PROVIDERS, serverEnvironment } from "../../state/server";
 import { threadFamilies } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { WorktreeBaseBranchPicker } from "../WorktreeBaseBranchPicker";
+import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
 import { ConnectionStatusDot, connectionPhaseDotClassName } from "../ConnectionStatusDot";
 import {
@@ -1270,6 +1272,9 @@ function ScheduledTaskEditorForm({
     );
   const scopedProjects = projectsOn(environmentId);
   const settings = useEnvironmentSettings(environmentId);
+  const projectDefaultBranch = (projectId: string, currentSettings: ServerSettings = settings) =>
+    resolveProjectSettings(currentSettings, projectId ? (projectId as ProjectId) : null).settings
+      .defaultBranch ?? "main";
   const providers =
     useAtomValue(serverEnvironment.providersValueAtom(environmentId)) ?? EMPTY_SERVER_PROVIDERS;
   const canOperate = useAtomValue(
@@ -1285,6 +1290,7 @@ function ScheduledTaskEditorForm({
       : {
           ...EMPTY_DRAFT,
           projectId: defaultScheduledTaskProjectId(scopedProjects, scope),
+          baseRef: projectDefaultBranch(defaultScheduledTaskProjectId(scopedProjects, scope)),
         },
   );
   // Pinned first. The chosen project stays listed after it is archived.
@@ -1470,12 +1476,16 @@ function ScheduledTaskEditorForm({
                 const next = connectedEnvironments.find((entry) => entry.environmentId === id);
                 if (!next) return;
                 setEnvironmentId(next.environmentId);
+                const projectId = defaultScheduledTaskProjectId(
+                  projectsOn(next.environmentId),
+                  scope,
+                );
                 setDraft((current) => ({
                   ...current,
                   projectId: defaultScheduledTaskProjectId(projectsOn(next.environmentId), scope),
                   modelKey: "",
                   baseModelSelection: null,
-                  baseRef: "main",
+                  baseRef: projectDefaultBranch(projectId, next.serverConfig?.settings ?? settings),
                   startFromOrigin: true,
                   existingWorktreePath: "",
                 }));
@@ -1561,7 +1571,11 @@ function ScheduledTaskEditorForm({
               <Select
                 value={selectedProjectId}
                 onValueChange={(projectId) =>
-                  setDraft((current) => ({ ...current, projectId: projectId ?? "" }))
+                  setDraft((current) => ({
+                    ...current,
+                    projectId: projectId ?? "",
+                    baseRef: projectDefaultBranch(projectId ?? ""),
+                  }))
                 }
               >
                 <SelectTrigger size="sm" id="scheduled-task-project">

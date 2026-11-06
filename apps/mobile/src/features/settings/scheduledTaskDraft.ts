@@ -254,6 +254,7 @@ export function hasScheduledTaskDraftChanges(
 export function createDraft(
   projectId: ProjectId | null,
   modelSelection: ModelSelection | null,
+  defaultBranch = "main",
 ): ScheduledTaskDraft {
   return {
     task: null,
@@ -265,7 +266,7 @@ export function createDraft(
     schedule: DEFAULT_SCHEDULE,
     threadMode: "new_thread",
     workspace: "worktree",
-    baseRef: "main",
+    baseRef: defaultBranch,
     checkoutPath: "",
     enabled: true,
     startFromOrigin: true,
