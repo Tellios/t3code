@@ -45,5 +45,6 @@ export function useSettingsWriter() {
     if (failures.length > 0) {
       Dialog.alert(gt("Could not save settings"), failures.join("\n\n"));
     }
+    return failures.length === 0;
   };
 }

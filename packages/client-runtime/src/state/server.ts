@@ -34,6 +34,8 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { AsyncResult, Atom, AtomRegistry } from "effect/reactivity";
+import { defaultBranchSettingsKey } from "@t3tools/shared/projectSettings";
+import { invalidateCachedVcsRefs } from "./vcsRefInvalidation.ts";
 
 import {
   createAtomCommandScheduler,
@@ -536,6 +538,7 @@ export const makeEnvironmentServerConfigState = Effect.fn("EnvironmentServerConf
     // Merged into the state, so the cache keeps the lists for the next launch and for offline.
     machineCatalogs: Stream.Stream<ReadonlyArray<FetchedMachineCatalog>> = Stream.empty,
   ) {
+    const registry = yield* Effect.serviceOption(AtomRegistry.AtomRegistry);
     const supervisor = yield* EnvironmentSupervisor.EnvironmentSupervisor;
     const cache = yield* Persistence.EnvironmentCacheStore;
     const environmentId = supervisor.target.environmentId;
@@ -651,13 +654,21 @@ export const makeEnvironmentServerConfigState = Effect.fn("EnvironmentServerConf
     yield* Stream.merge(configUpdates, catalogUpdates).pipe(
       Stream.runForEach((update) =>
         Effect.gen(function* () {
-          const current = yield* SubscriptionRef.get(state);
-          const next = update(current);
-          if (Option.isNone(next) || next.value === Option.getOrUndefined(current)) {
+          const previous = yield* SubscriptionRef.get(state);
+          const next = update(previous);
+          if (Option.isNone(next) || next.value === Option.getOrUndefined(previous)) {
             return;
           }
           yield* Ref.set(pendingPersistence, Option.some(next.value.config));
           yield* SubscriptionRef.set(state, next);
+          if (
+            Option.isSome(registry) &&
+            Option.isSome(previous) &&
+            defaultBranchSettingsKey(previous.value.config.settings) !==
+              defaultBranchSettingsKey(next.value.config.settings)
+          ) {
+            yield* invalidateCachedVcsRefs(registry.value, { environmentId, cwd: "<settings>" });
+          }
           yield* Queue.offer(persistence, next.value.config);
         }),
       ),

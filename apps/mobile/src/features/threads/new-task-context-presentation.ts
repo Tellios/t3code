@@ -140,6 +140,7 @@ export function filterNewTaskBranches<T extends { readonly name: string }>(
  * default still wins.
  */
 export function fillNewTaskWorkspaceBranch(input: {
+  readonly defaultBranch?: string | null;
   readonly selection: ComposerDraftWorkspaceSelection;
   readonly branches: ReadonlyArray<{
     readonly name: string;
@@ -154,6 +155,9 @@ export function fillNewTaskWorkspaceBranch(input: {
   const { selection } = input;
   if (selection.branch !== null) return selection;
   if (selection.mode === "worktree") {
+    if (input.defaultBranch != null && input.worktreeDefaultSettled) {
+      return { ...selection, branch: input.defaultBranch, worktreePath: null };
+    }
     // The default may only exist as origin/<default>, so search remote refs too.
     const base =
       input.branches.find((branch) => branch.isDefault) ??
@@ -180,6 +184,7 @@ export function fillNewTaskWorkspaceBranch(input: {
  * this, so what each shows is what is sent.
  */
 export function resolveNewTaskDraftWorkspace(input: {
+  readonly defaultBranch?: string | null;
   readonly selection: ComposerDraftWorkspaceSelection | undefined;
   readonly canChooseWorkspace: boolean;
   readonly defaultMode: WorkspaceMode;
@@ -190,6 +195,7 @@ export function resolveNewTaskDraftWorkspace(input: {
 }): ComposerDraftWorkspaceSelection {
   const selection = input.canChooseWorkspace ? input.selection : undefined;
   return fillNewTaskWorkspaceBranch({
+    defaultBranch: input.defaultBranch,
     selection: resolveNewTaskWorkspaceSelection({
       selection,
       fallback: { mode: input.defaultMode, branch: null, worktreePath: null },

@@ -46,6 +46,7 @@ vi.mock("../../state/preferences", () => ({
 }));
 vi.mock("./components/AutoSettleDaysField", () => ({ AutoSettleDaysField: () => null }));
 vi.mock("./components/IssueTrackerSection", () => ({ IssueTrackerSection: () => null }));
+vi.mock("./SettingsDefaultBranchRouteScreen", () => ({ DefaultBranchSettingsRow: () => null }));
 vi.mock("./components/SourceControlProvidersSection", () => ({
   SourceControlProvidersSection: () => null,
 }));

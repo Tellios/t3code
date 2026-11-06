@@ -45,6 +45,7 @@ import { parseT3ProjectFile } from "@t3tools/shared/t3ProjectFile";
 import { resolveProjectFileBackedSetting } from "@t3tools/shared/projectSettings";
 import { gitCommandDuration, gitCommandsTotal, withMetrics } from "../observability/Metrics.ts";
 import * as GitVcsDriver from "./GitVcsDriver.ts";
+import * as DefaultBranchPolicy from "./DefaultBranchPolicy.ts";
 import { removeEmptyDirectory, type RemoveEmptyDirectoryError } from "./removeEmptyDirectory.ts";
 import { VcsAutomaticFetchInterval } from "./VcsAutomaticFetchInterval.ts";
 import {
@@ -207,6 +208,7 @@ interface GitRepositoryPaths {
 
 interface GitRefsSnapshot {
   readonly defaultBranch: string | null;
+  readonly primaryRemoteName: string | null;
   readonly localBranches: ReadonlyArray<VcsRef>;
   readonly remoteBranches: ReadonlyArray<VcsRef>;
   readonly hasPrimaryRemote: boolean;
@@ -1036,6 +1038,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       fiber: Fiber.Fiber<void, GitCommandError>;
     }
   >();
+  const defaultBranchPolicy = yield* DefaultBranchPolicy.DefaultBranchPolicy;
   const statusFetchProcesses = yield* Semaphore.make(4);
 
   const executeRaw: GitVcsDriver.GitVcsDriver["Service"]["execute"] = Effect.fnUntraced(
@@ -1855,7 +1858,61 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     ).pipe(Effect.ignore);
   });
 
-  const resolveDefaultBranchName = (
+  const getDefaultBranchOverride = Effect.fn("GitVcsDriver.getDefaultBranchOverride")(function* (
+    cwd: string,
+  ) {
+    return yield* defaultBranchPolicy.getOverride({
+      cwd,
+      repository: resolveRepositoryPaths(cwd).pipe(
+        Effect.map((repository) =>
+          repository === null
+            ? null
+            : {
+                worktreeRoot: repository.worktreeRoot,
+                repositoryRoot:
+                  path.basename(repository.gitCommonDir) === ".git"
+                    ? path.dirname(repository.gitCommonDir)
+                    : repository.gitCommonDir,
+              },
+        ),
+      ),
+    });
+  });
+
+  const unavailableDefaultBranch = (cwd: string, branch: string) =>
+    new GitCommandError({
+      operation: "GitVcsDriver.resolveDefaultBranchName",
+      command: "git show-ref",
+      cwd,
+      detail: `The configured default branch '${branch}' is unavailable. Choose another default branch or Automatic in Project settings → Source control.`,
+    });
+
+  const validateDefaultBranchOverride = Effect.fn("GitVcsDriver.validateDefaultBranchOverride")(
+    function* (cwd: string, branch: string) {
+      if (yield* branchExists(cwd, branch)) return;
+      const remoteName = yield* resolvePrimaryRemoteName(cwd).pipe(
+        Effect.orElseSucceed(() => null),
+      );
+      if (remoteName !== null && (yield* remoteBranchExists({ cwd, remoteName, refName: branch })))
+        return;
+      return yield* unavailableDefaultBranch(cwd, branch);
+    },
+  );
+
+  const resolveDefaultBranchName = Effect.fn("GitVcsDriver.resolveDefaultBranchName")(function* (
+    cwd: string,
+    remoteName: string,
+  ) {
+    const override = yield* getDefaultBranchOverride(cwd);
+    if (override !== null) {
+      yield* validateDefaultBranchOverride(cwd, override);
+      return override;
+    }
+    return yield* readRemoteDefaultBranchName(cwd, remoteName);
+  });
+
+  // Reads the remote's HEAD only; callers that honor the project override check it first.
+  const readRemoteDefaultBranchName = (
     cwd: string,
     remoteName: string,
     gitDirArgs: ReadonlyArray<string> = [],
@@ -1934,13 +1991,13 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
 
   const resolvePrimaryDefaultBranchName = Effect.fn("GitVcsDriver.resolvePrimaryDefaultBranchName")(
     function* (cwd: string, gitDirArgs: ReadonlyArray<string> = []) {
-      const originDefault = yield* resolveDefaultBranchName(cwd, "origin", gitDirArgs);
+      const originDefault = yield* readRemoteDefaultBranchName(cwd, "origin", gitDirArgs);
       if (originDefault !== null) return originDefault;
       const remoteNames = yield* listRemoteNames(cwd, gitDirArgs);
       const [firstRemote] = remoteNames;
       return firstRemote === undefined || remoteNames.includes("origin")
         ? null
-        : yield* resolveDefaultBranchName(cwd, firstRemote, gitDirArgs);
+        : yield* readRemoteDefaultBranchName(cwd, firstRemote, gitDirArgs);
     },
   );
 
@@ -2129,6 +2186,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     options?: {
       readonly allowRemoteOfCurrent?: boolean;
       readonly knownOriginDefaultBranch?: string | null;
+      readonly settingsCwd?: string;
     },
   ) {
     const configuredBaseRef = yield* readConfigValue(cwd, `branch.${refName}.t3-merge-base-ref`);
@@ -2163,18 +2221,26 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       if (trackedBase !== null) return trackedBase;
     }
 
+    const override = yield* getDefaultBranchOverride(options?.settingsCwd ?? cwd);
+    if (override !== null) {
+      yield* validateDefaultBranchOverride(cwd, override);
+    }
+
     const primaryRemoteName = yield* resolvePrimaryRemoteName(cwd).pipe(
       Effect.orElseSucceed(() => null),
     );
-    const candidates = [
-      Effect.succeed(configuredBaseBranch),
-      primaryRemoteName === null
-        ? Effect.succeed(null)
-        : primaryRemoteName === "origin" && options?.knownOriginDefaultBranch != null
-          ? Effect.succeed(options.knownOriginDefaultBranch)
-          : resolveDefaultBranchName(cwd, primaryRemoteName),
-      ...DEFAULT_BASE_BRANCH_CANDIDATES.map(Effect.succeed),
-    ];
+    const candidates =
+      override !== null
+        ? [Effect.succeed(override)]
+        : [
+            Effect.succeed(configuredBaseBranch),
+            primaryRemoteName === null
+              ? Effect.succeed(null)
+              : primaryRemoteName === "origin" && options?.knownOriginDefaultBranch != null
+                ? Effect.succeed(options.knownOriginDefaultBranch)
+                : resolveDefaultBranchName(cwd, primaryRemoteName),
+            ...DEFAULT_BASE_BRANCH_CANDIDATES.map(Effect.succeed),
+          ];
 
     for (const readCandidate of candidates) {
       const candidate = yield* readCandidate;
@@ -2184,11 +2250,14 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
 
       const remotePrefix =
         primaryRemoteName && primaryRemoteName !== "origin" ? `${primaryRemoteName}/` : null;
-      const normalizedCandidate = candidate.startsWith("origin/")
-        ? candidate.slice("origin/".length)
-        : remotePrefix && candidate.startsWith(remotePrefix)
-          ? candidate.slice(remotePrefix.length)
-          : candidate;
+      const normalizedCandidate =
+        override !== null
+          ? candidate
+          : candidate.startsWith("origin/")
+            ? candidate.slice("origin/".length)
+            : remotePrefix && candidate.startsWith(remotePrefix)
+              ? candidate.slice(remotePrefix.length)
+              : candidate;
       if (normalizedCandidate.length === 0) {
         continue;
       }
@@ -2332,7 +2401,8 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       );
     }
 
-    const defaultBranch = yield* resolvePrimaryDefaultBranchName(cwd);
+    const defaultBranch =
+      (yield* getDefaultBranchOverride(cwd)) ?? (yield* resolvePrimaryDefaultBranchName(cwd));
     const isDefaultBranch =
       branch !== null &&
       (branch === defaultBranch ||
@@ -2467,9 +2537,17 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
           }),
           Effect.result,
         ),
-        statusCacheKey
-          ? Cache.get(defaultBranchCache, statusCacheKey).pipe(Effect.orElseSucceed(() => null))
-          : resolvePrimaryDefaultBranchName(cwd).pipe(Effect.orElseSucceed(() => null)),
+        getDefaultBranchOverride(cwd).pipe(
+          Effect.flatMap((override) =>
+            override !== null
+              ? Effect.succeed(override)
+              : statusCacheKey
+                ? Cache.get(defaultBranchCache, statusCacheKey).pipe(
+                    Effect.orElseSucceed(() => null),
+                  )
+                : resolvePrimaryDefaultBranchName(cwd).pipe(Effect.orElseSucceed(() => null)),
+          ),
+        ),
         statusCacheKey
           ? Cache.get(primaryRemoteExistsCache, statusCacheKey).pipe(
               Effect.orElseSucceed(() => false),
@@ -2583,6 +2661,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
           : Effect.succeed(0),
         options?.includeBranchChanges
           ? readBranchChangeTotals(repositoryPaths?.worktreeRoot ?? cwd, refName, {
+              settingsCwd: cwd,
               knownOriginDefaultBranch: defaultBranch,
               untrackedRoots,
               headOid,
@@ -3832,6 +3911,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     branch: string | null,
     explicitBaseRef?: string,
     knownOriginDefaultBranch: string | null = null,
+    settingsCwd = cwd,
   ) {
     const base =
       explicitBaseRef !== undefined
@@ -3846,7 +3926,16 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
           ? yield* resolveBaseBranchForNoUpstream(cwd, branch, {
               allowRemoteOfCurrent: true,
               knownOriginDefaultBranch,
-            }).pipe(Effect.orElseSucceed(() => null))
+              settingsCwd,
+            }).pipe(
+              Effect.catch((error) =>
+                getDefaultBranchOverride(settingsCwd).pipe(
+                  Effect.flatMap((override) =>
+                    override === null ? Effect.succeed(null) : Effect.fail(error),
+                  ),
+                ),
+              ),
+            )
           : null;
     if (base === null) return { baseRef: null, mergeBase: "HEAD" };
     const { baseRef, comparisonRef } = base;
@@ -3881,6 +3970,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       readonly knownOriginDefaultBranch: string | null;
       readonly untrackedRoots: ReadonlyArray<string>;
       readonly headOid: string | null;
+      readonly settingsCwd?: string;
     },
   ) {
     const resolved = yield* resolveReviewMergeBase(
@@ -3888,6 +3978,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       branch,
       undefined,
       options?.knownOriginDefaultBranch ?? null,
+      options?.settingsCwd,
     );
     // A rename after `git status` read HEAD moves the base config away, so the base was guessed.
     const { baseRef, mergeBase } =
@@ -4248,7 +4339,13 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     const review =
       sourceKind === "working-tree"
         ? { baseRef: input.baseRef ?? null, mergeBase: null }
-        : yield* resolveReviewMergeBase(cwd, repository.currentBranch, input.baseRef);
+        : yield* resolveReviewMergeBase(
+            cwd,
+            repository.currentBranch,
+            input.baseRef,
+            null,
+            input.cwd,
+          );
 
     const diffArgs = [
       ...REVIEW_DIFF_ARGS,
@@ -4824,6 +4921,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
 
     return {
       defaultBranch,
+      primaryRemoteName: remoteNames.includes("origin") ? "origin" : (remoteNames[0] ?? null),
       localBranches: localBranches.toSorted(byRecencyThenName).map(({ ref }) => ref),
       remoteBranches: remoteBranches.toSorted(byRecencyThenName).map(({ ref }) => ref),
       hasPrimaryRemote: remoteNames.length > 0,
@@ -4963,6 +5061,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         ],
         { concurrency: 2 },
       );
+      const override = yield* getDefaultBranchOverride(input.cwd);
       const { worktreeRoot } = repositoryPaths;
       // The snapshot misses a branch created outside T3 Code until it refreshes. An unborn HEAD
       // names a branch with no ref yet, so the ref must exist before it is listed.
@@ -4976,7 +5075,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
                 name: currentBranch,
                 current: true,
                 isRemote: false,
-                isDefault: currentBranch === snapshot.defaultBranch,
+                isDefault: currentBranch === (override ?? snapshot.defaultBranch),
                 worktreePath: worktreeRoot,
               },
             ]
@@ -4985,6 +5084,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         const current = ref.name === currentBranch;
         return {
           ...ref,
+          isDefault: override === null ? ref.isDefault : ref.name === override,
           worktreePath:
             worktreeRoot === null
               ? ref.worktreePath
@@ -4997,9 +5097,16 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         };
       });
       const localBranches = [...unlistedCurrentBranch, ...listedBranches];
+      const remoteBranches =
+        override === null
+          ? snapshot.remoteBranches
+          : snapshot.remoteBranches.map((ref) => ({
+              ...ref,
+              isDefault: ref.name === `${snapshot.primaryRemoteName}/${override}`,
+            }));
       const combinedBranches = input.includeMatchingRemoteRefs
-        ? [...localBranches, ...snapshot.remoteBranches]
-        : dedupeRemoteBranchesWithLocalMatches([...localBranches, ...snapshot.remoteBranches]);
+        ? [...localBranches, ...remoteBranches]
+        : dedupeRemoteBranchesWithLocalMatches([...localBranches, ...remoteBranches]);
       const allBranches = combinedBranches.toSorted((left, right) => {
         const leftPriority = left.current ? 0 : left.isDefault ? 1 : 2;
         const rightPriority = right.current ? 0 : right.isDefault ? 1 : 2;
@@ -5022,6 +5129,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
           ? {}
           : { isAtRepositoryRoot: repositoryPaths.isAtRepositoryRoot }),
         refs: [...refs.refs],
+        primaryRemoteName: snapshot.primaryRemoteName,
         isRepo: true,
         hasPrimaryRemote: snapshot.hasPrimaryRemote,
         nextCursor: refs.nextCursor,
@@ -6336,6 +6444,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     }),
     resolvePrimaryRemoteName,
     resolveDefaultBranchName,
+    getDefaultBranchOverride,
     fetchRemote: Effect.fnUntraced(function* (input) {
       return yield* withListRefsInvalidation(
         input.cwd,

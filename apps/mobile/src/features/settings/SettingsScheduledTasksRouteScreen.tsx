@@ -90,6 +90,7 @@ import {
   useScheduledTaskEditor,
   useScheduledTaskThread,
 } from "./scheduled-task-editor";
+import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import {
   discardScheduledTaskEditor,
   markScheduledTaskEditorSaved,
@@ -975,6 +976,10 @@ function TaskForm({
                     ));
                 return {
                   ...changeDraftProject(current, project.id),
+                  baseRef: config
+                    ? (resolveProjectSettings(config.settings, project.id).settings.defaultBranch ??
+                      "main")
+                    : "main",
                   modelSelection: keepsExplicitModel
                     ? current.modelSelection
                     : scheduledTaskDefaultModel(config, project),

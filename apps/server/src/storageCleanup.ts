@@ -1434,9 +1434,16 @@ const make = Effect.gen(function* () {
         }
         const changes = yield* localChangesReason(worktreePath, settings);
         if (changes !== null) return keep(changes);
+        const repositoryCwd = path.resolve(project.workspaceRoot);
+        const override = yield* git.getDefaultBranchOverride(repositoryCwd);
+        if (override !== null) {
+          const local = yield* git.resolveBranchName(repositoryCwd, `refs/heads/${override}`);
+          if (local === null && (yield* git.resolveBranchName(repositoryCwd, override)) === null) {
+            return keep("configured default branch is unavailable");
+          }
+        }
         const head = yield* git.resolveCommit({ cwd: worktreePath, revision: "HEAD" });
         if (!eligible) {
-          const repositoryCwd = path.resolve(project.workspaceRoot);
           const remotes = yield* git.execute({
             operation: "StorageCleanup.listRemotes",
             cwd: repositoryCwd,
@@ -1455,12 +1462,15 @@ const make = Effect.gen(function* () {
                   ? notDueReason
                   : "no remote is configured for merged-worktree cleanup",
               );
-            const projectHead = yield* git.execute({
-              operation: "StorageCleanup.resolveProjectBranch",
-              cwd: repositoryCwd,
-              args: ["symbolic-ref", "--quiet", "HEAD"],
-              allowNonZeroExit: true,
-            });
+            const projectHead =
+              override !== null
+                ? { exitCode: 0, stdout: `refs/heads/${override}` }
+                : yield* git.execute({
+                    operation: "StorageCleanup.resolveProjectBranch",
+                    cwd: repositoryCwd,
+                    args: ["symbolic-ref", "--quiet", "HEAD"],
+                    allowNonZeroExit: true,
+                  });
             if (projectHead.exitCode !== 0) return keep("project branch is unavailable");
             defaultRef = projectHead.stdout.trim();
             branch = defaultRef.slice("refs/heads/".length);
@@ -1468,7 +1478,7 @@ const make = Effect.gen(function* () {
             const defaultBranchKey = `${repositoryCwd}\0${remote}`;
             branch = defaultBranches.get(defaultBranchKey);
             if (branch === undefined) {
-              branch = yield* git.resolveDefaultBranchName(repositoryCwd, remote);
+              branch = override ?? (yield* git.resolveDefaultBranchName(repositoryCwd, remote));
               // Without a local HEAD ref, only the remote can identify its default;
               // a conventional name may be a feature branch.
               if (branch === null) {

@@ -36,7 +36,13 @@ import { readLocalApi } from "../localApi";
 import { useOpenPrLink } from "../lib/openPullRequestLink";
 import { usePaginatedBranches } from "../state/queries";
 import { useProjectClone } from "../state/projectClones";
-import { readThreadShell, useProject, useQuietThreadShell } from "../state/entities";
+import {
+  readThreadShell,
+  useProject,
+  useQuietThreadShell,
+  useServerConfigs,
+} from "../state/entities";
+import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { useEnvironmentQuery } from "../state/query";
 import { readEnvironmentScope, useEnvironmentScope } from "~/state/session";
 import { threadEnvironment } from "../state/threads";
@@ -162,6 +168,11 @@ export function BranchToolbarBranchSelector({
       ? scopeProjectRef(draftThread.environmentId, draftThread.projectId)
       : null;
   const activeProject = useProject(activeProjectRef);
+  const settings = useServerConfigs().get(environmentId)?.settings;
+  const defaultBranchOverride =
+    settings && activeProject
+      ? resolveProjectSettings(settings, activeProject.id).settings.defaultBranch
+      : null;
 
   const activeThreadId = serverThread?.id ?? (draftThread ? threadId : undefined);
   const activeThreadBranch =
@@ -615,7 +626,7 @@ export function BranchToolbarBranchSelector({
 
   const worktreeBaseBranchCandidate = isInitialBranchesLoadPending
     ? null
-    : resolveDefaultWorktreeBaseBranch(refs);
+    : (defaultBranchOverride ?? resolveDefaultWorktreeBaseBranch(refs));
 
   const projectCloneDone = useProjectClone(activeProjectRef)?.phase === "done";
   const refreshStaleRefs = useEffectEvent(() => {
