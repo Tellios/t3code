@@ -372,6 +372,7 @@ export const NxtvironInstance = Schema.Struct({
   state: NxtvironInstanceState,
   ports: Schema.Record(Schema.String, LocalServerPort),
   proxyHostname: Schema.NullOr(TrimmedNonEmptyString),
+  url: Schema.NullOr(TrimmedNonEmptyString),
   workingDir: Schema.String,
   configPath: Schema.String,
 });
