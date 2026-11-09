@@ -287,6 +287,9 @@ import {
   PreviewResizeInput,
   PreviewAdjustInput,
   PreviewSessionSnapshot,
+  NxtvironInstanceActionError,
+  NxtvironInstanceActionInput,
+  NxtvironInstanceList,
 } from "./preview.ts";
 import {
   DeviceActionInput,
@@ -484,6 +487,7 @@ export const WS_METHODS = {
   previewReportProfiles: "preview.reportProfiles",
   previewReportStatus: "preview.reportStatus",
   previewStopLocalServer: "preview.stopLocalServer",
+  nxtvironInstanceAction: "nxtviron.instanceAction",
 
   deviceConfigure: "device.configure",
   deviceList: "device.list",
@@ -608,6 +612,7 @@ export const WS_METHODS = {
   subscribeTerminalMetadata: "subscribeTerminalMetadata",
   subscribePreviewEvents: "subscribePreviewEvents",
   subscribeDiscoveredLocalServers: "subscribeDiscoveredLocalServers",
+  subscribeNxtvironInstances: "subscribeNxtvironInstances",
   subscribeDeviceState: "subscribeDeviceState",
   subscribeServerConfig: "subscribeServerConfig",
   subscribeServerLifecycle: "subscribeServerLifecycle",
@@ -1658,6 +1663,18 @@ const WsSubscribeDiscoveredLocalServersRpc = Rpc.make(WS_METHODS.subscribeDiscov
   stream: true,
 });
 
+const WsNxtvironInstanceActionRpc = Rpc.make(WS_METHODS.nxtvironInstanceAction, {
+  payload: NxtvironInstanceActionInput,
+  error: Schema.Union([NxtvironInstanceActionError, EnvironmentAuthorizationError]),
+});
+
+const WsSubscribeNxtvironInstancesRpc = Rpc.make(WS_METHODS.subscribeNxtvironInstances, {
+  payload: Schema.Struct({}),
+  success: NxtvironInstanceList,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
 const WsDeviceTestHostRpc = Rpc.make(WS_METHODS.deviceTestHost, {
   payload: SshDeviceHostConfig,
   success: DeviceHostSummary,
@@ -2175,6 +2192,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsSubscribePreviewEventsRpc,
   WsPreviewStopLocalServerRpc,
   WsSubscribeDiscoveredLocalServersRpc,
+  WsNxtvironInstanceActionRpc,
+  WsSubscribeNxtvironInstancesRpc,
   WsDeviceConfigureRpc,
   WsDeviceListRpc,
   WsDeviceTestHostRpc,
