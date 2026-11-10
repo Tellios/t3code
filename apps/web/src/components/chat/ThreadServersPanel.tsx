@@ -58,8 +58,9 @@ const serverKey = (server: DiscoveredLocalServer) => `${server.pid}:${server.por
 const nxtvironPort = (instance: NxtvironInstance) =>
   instance.ports.http ?? Object.values(instance.ports)[0] ?? null;
 
-const NXTVIRON_STATE_LABEL: Partial<Record<NxtvironInstance["state"], string>> = {
-  stopped: "Stopped",
+const NXTVIRON_STATE_LABEL: Record<NxtvironInstance["state"], string> = {
+  running: "Running",
+  stopped: "Paused",
   missing: "Missing",
   unavailable: "Unavailable",
 };
@@ -169,13 +170,12 @@ function ThreadServersList(props: ThreadServersPanelProps) {
     ...instances.map((instance): ServerRow => {
       const key = `nxtviron:${instance.ref}`;
       const port = nxtvironPort(instance);
-      const stateLabel = NXTVIRON_STATE_LABEL[instance.state];
+      const sameProcess = instances.filter((other) => other.process === instance.process);
+      const index = sameProcess.length > 1 ? sameProcess.indexOf(instance) + 1 : null;
       return {
         key,
-        title: instance.proxyHostname ?? (port === null ? instance.ref : `localhost:${port}`),
-        subtitle: ["nxtviron", instance.process, instance.branch ?? instance.id, stateLabel]
-          .filter(Boolean)
-          .join(" · "),
+        title: ["nxtviron", instance.process, index].filter((part) => part !== null).join(" - "),
+        subtitle: NXTVIRON_STATE_LABEL[instance.state],
         url:
           instance.state !== "running"
             ? null

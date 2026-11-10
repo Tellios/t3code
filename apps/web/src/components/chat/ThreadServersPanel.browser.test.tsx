@@ -141,6 +141,8 @@ it("offers each nxtviron instance the actions its state allows", async () => {
   );
   // The discovered server on the instance's port is the same server, so it is not listed twice.
   expect(screen.container.querySelectorAll("li")).toHaveLength(3);
+  expect(screen.container.querySelector("li")?.textContent).toContain("nxtviron - api");
+  expect(screen.container.querySelector("li")?.textContent).toContain("Running");
 
   await page.getByRole("button", { name: "Resume web#main" }).click();
   await vi.waitFor(() =>
