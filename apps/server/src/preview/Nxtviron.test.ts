@@ -2,6 +2,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
 import type { NxtvironInstanceList } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import { ChildProcessSpawner } from "effect/process";
@@ -193,35 +194,41 @@ describe("NxtvironInstances", () => {
     ),
   );
 
-  it.effect("retries from the config's directory when the working directory misses the scope", () =>
-    withService(
-      {
-        list: listing(
-          instance({}),
-          instance({ ref: "web#main", process: "web", status: "exited" }),
-        ),
-        respond: ({ args, cwd }) => {
-          if (cwd !== "/work/repo") return undefined;
-          return args.includes("stop")
-            ? success({ stopped: [], removed: false })
-            : failure("not_found", "No known instance main");
+  it.effect("runs from the directory the config's process workingDir resolves from", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-nxtviron-config-" });
+      const configPath = `${root}/config.yml`;
+      yield* fs.writeFileString(
+        configPath,
+        "processes:\n  storybook:\n    workingDir: hub/client\n  api:\n    command: node\n",
+      );
+      yield* withService(
+        {
+          list: listing(
+            instance({ configPath }),
+            instance({
+              ref: "storybook#main",
+              process: "storybook",
+              configPath,
+              workingDir: "/work/repo/hub/client",
+            }),
+          ),
         },
-      },
-      ({ service, calls }) =>
-        Effect.gen(function* () {
-          yield* service.act({ ref: "api#main", action: "stop" });
-          yield* service.act({ ref: "web#main", action: "resume" });
-          expect(actionCalls(calls).map((call) => [call.args[3], call.cwd])).toEqual([
-            ["stop", "/work/repo"],
-            ["stop", "/home/u/.config/nxtviron"],
-            ["start", "/work/repo"],
-            ["start", "/home/u/.config/nxtviron"],
-          ]);
-        }),
-    ),
+        ({ service, calls }) =>
+          Effect.gen(function* () {
+            yield* service.act({ ref: "storybook#main", action: "stop" });
+            yield* service.act({ ref: "api#main", action: "stop" });
+            expect(actionCalls(calls).map((call) => call.cwd)).toEqual([
+              "/work/repo",
+              "/work/repo",
+            ]);
+          }),
+      );
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 
-  it.effect("fails when no directory holds the instance's scope", () =>
+  it.effect("fails when nxtviron does not find the instance in its scope", () =>
     withService(
       {
         list: listing(instance({})),

@@ -11,6 +11,7 @@ import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
@@ -19,6 +20,7 @@ import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
+import { parse as parseYaml } from "yaml";
 
 import * as ProcessRunner from "../processRunner.ts";
 
@@ -168,6 +170,43 @@ const missedInstance = (
   });
 };
 
+const ConfigProcesses = Schema.Struct({
+  processes: Schema.Record(
+    Schema.String,
+    Schema.Struct({ workingDir: Schema.optional(Schema.String) }),
+  ),
+});
+const decodeConfigProcesses = Schema.decodeUnknownOption(ConfigProcesses);
+
+const configWorkingDir = (content: string, processName: string): string | undefined => {
+  let parsed: unknown;
+  try {
+    parsed = parseYaml(content);
+  } catch {
+    return undefined;
+  }
+  const workingDir = Option.getOrUndefined(decodeConfigProcesses(parsed))?.processes[processName]
+    ?.workingDir;
+  return workingDir === "" ? undefined : workingDir;
+};
+
+/**
+ * `stop` and `start` find an instance by the scope `path.resolve(cwd, process.workingDir)`.
+ * nxtviron records that resolved directory but not the cwd, so undo the config's workingDir.
+ */
+const cliCwdFor = (
+  path: Path.Path,
+  instance: Pick<NxtvironInstance, "workingDir">,
+  workingDir: string | undefined,
+): string => {
+  if (workingDir === undefined || path.isAbsolute(workingDir)) return instance.workingDir;
+  let cwd = instance.workingDir;
+  for (const _ of path.normalize(workingDir).split(path.sep).filter(Boolean)) {
+    cwd = path.dirname(cwd);
+  }
+  return path.resolve(cwd, workingDir) === instance.workingDir ? cwd : instance.workingDir;
+};
+
 const actionError = (code: string, detail: string) =>
   new NxtvironInstanceActionError({ code, detail });
 
@@ -182,6 +221,7 @@ interface State {
 const make = Effect.gen(function* () {
   const processRunner = yield* ProcessRunner.ProcessRunner;
   const path = yield* Path.Path;
+  const fs = yield* FileSystem.FileSystem;
   const stateRef = yield* Ref.make<State>({ listeners: new Set(), latest: null });
   const refreshSemaphore = yield* Semaphore.make(1);
 
@@ -243,6 +283,14 @@ const make = Effect.gen(function* () {
     }
   });
 
+  const cliCwd = (instance: NxtvironInstance) =>
+    fs.readFileString(instance.configPath).pipe(
+      Effect.map((content) =>
+        cliCwdFor(path, instance, configWorkingDir(content, instance.process)),
+      ),
+      Effect.orElseSucceed(() => instance.workingDir),
+    );
+
   const listedInstances = Effect.gen(function* () {
     return (yield* Ref.get(stateRef)).latest?.instances ?? [];
   });
@@ -263,38 +311,30 @@ const make = Effect.gen(function* () {
           `Can't ${input.action} ${instance.ref} while it is ${instance.status}.`,
         );
       }
-      // `stop` and `start` rebuild the instance's scope from their cwd, which nxtviron does not
-      // record. Without a process `workingDir` that cwd is the instance's own; with one, it is
-      // usually the config's directory.
-      const cwds = [...new Set([instance.workingDir, path.dirname(instance.configPath)])];
-      for (const [index, cwd] of cwds.entries()) {
-        const output = yield* processRunner
-          .run({
-            command: COMMAND,
-            args: actionArgs(instance, input.action),
-            cwd,
-            timeout: ACTION_TIMEOUT,
-          })
-          .pipe(Effect.mapError((cause) => actionError("internal", cause.message)));
-        const envelope = decodeEnvelope(output.stdout);
-        if (Option.isNone(envelope)) {
-          return yield* actionError(
-            "internal",
-            output.stderr.trim().split("\n").at(-1) || `nxtviron ${input.action} failed.`,
-          );
-        }
-        const missed = missedInstance(input.action, envelope.value);
-        if (missed && index < cwds.length - 1) continue;
-        if (missed) {
-          return yield* actionError(
-            "not_found",
-            `nxtviron could not find ${instance.ref} from its working directory.`,
-          );
-        }
-        if (!envelope.value.ok) {
-          return yield* actionError(envelope.value.error.code, envelope.value.error.message);
-        }
-        return;
+      const cwd = yield* cliCwd(instance);
+      const output = yield* processRunner
+        .run({
+          command: COMMAND,
+          args: actionArgs(instance, input.action),
+          cwd,
+          timeout: ACTION_TIMEOUT,
+        })
+        .pipe(Effect.mapError((cause) => actionError("internal", cause.message)));
+      const envelope = decodeEnvelope(output.stdout);
+      if (Option.isNone(envelope)) {
+        return yield* actionError(
+          "internal",
+          output.stderr.trim().split("\n").at(-1) || `nxtviron ${input.action} failed.`,
+        );
+      }
+      if (missedInstance(input.action, envelope.value)) {
+        return yield* actionError(
+          "not_found",
+          `nxtviron could not find ${instance.ref} from ${cwd}.`,
+        );
+      }
+      if (!envelope.value.ok) {
+        return yield* actionError(envelope.value.error.code, envelope.value.error.message);
       }
     },
     (effect) => Effect.ensuring(effect, refresh()),
