@@ -43,15 +43,8 @@ const LIST_TIMEOUT = Duration.seconds(20);
 const ACTION_TIMEOUT = Duration.minutes(2);
 const UNAVAILABLE: NxtvironInstanceList = { available: false, instances: [] };
 
-const RUNNING_STATUSES = new Set([
-  "online",
-  "launching",
-  "running",
-  "created",
-  "restarting",
-  "paused",
-]);
-const STOPPED_STATUSES = new Set(["stopped", "exited", "dead", "errored"]);
+const RUNNING_STATUSES = new Set(["online", "launching", "running", "created", "restarting"]);
+const STOPPED_STATUSES = new Set(["stopped", "paused", "exited", "dead", "errored"]);
 
 const instanceState = (status: string): NxtvironInstanceState => {
   if (RUNNING_STATUSES.has(status)) return "running";
@@ -137,6 +130,7 @@ const actionArgs = (
         instance.id,
       ];
     case "resume":
+    case "restart":
       return [
         "--json",
         "--config",

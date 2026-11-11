@@ -133,9 +133,11 @@ it("offers each nxtviron instance the actions its state allows", async () => {
 
   await vi.waitFor(() =>
     expect(actionNames()).toEqual([
+      "Restart api#main",
       "Stop api#main",
       "Resume web#main",
       "Delete web#main",
+      "Resume job#main",
       "Delete job#main",
     ]),
   );
@@ -149,6 +151,14 @@ it("offers each nxtviron instance the actions its state allows", async () => {
     expect(mocks.run).toHaveBeenCalledWith({
       environmentId: EnvironmentId.make("env"),
       input: { ref: "web#main", action: "resume" },
+    }),
+  );
+
+  await page.getByRole("button", { name: "Restart api#main" }).click();
+  await vi.waitFor(() =>
+    expect(mocks.run).toHaveBeenCalledWith({
+      environmentId: EnvironmentId.make("env"),
+      input: { ref: "api#main", action: "restart" },
     }),
   );
 });

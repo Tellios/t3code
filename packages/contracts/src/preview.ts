@@ -382,7 +382,7 @@ export const NxtvironInstanceList = Schema.Struct({
 });
 export type NxtvironInstanceList = typeof NxtvironInstanceList.Type;
 
-export const NxtvironInstanceAction = Schema.Literals(["resume", "stop", "delete"]);
+export const NxtvironInstanceAction = Schema.Literals(["resume", "restart", "stop", "delete"]);
 export type NxtvironInstanceAction = typeof NxtvironInstanceAction.Type;
 
 export const nxtvironInstanceActions = (
@@ -390,11 +390,10 @@ export const nxtvironInstanceActions = (
 ): ReadonlyArray<NxtvironInstanceAction> => {
   switch (state) {
     case "running":
-      return ["stop"];
+      return ["restart", "stop"];
     case "stopped":
-      return ["resume", "delete"];
     case "missing":
-      return ["delete"];
+      return ["resume", "delete"];
     case "unavailable":
       return [];
   }

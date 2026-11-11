@@ -102,6 +102,7 @@ describe("parseInstanceList", () => {
         instance({ ref: "api#a", id: "a", status: "errored", proxy: undefined }),
         instance({ ref: "api#b", id: "b", status: "missing", ports: { http: 0, debug: 9229 } }),
         instance({ ref: "api#c", id: "c", status: "pm2-unavailable", branch: undefined }),
+        instance({ ref: "api#d", id: "d", status: "paused" }),
       ),
     );
     expect(Option.getOrThrow(parsed)).toEqual({
@@ -122,6 +123,7 @@ describe("parseInstanceList", () => {
         }),
         expect.objectContaining({ ref: "api#b", state: "missing", ports: { debug: 9229 } }),
         expect.objectContaining({ ref: "api#c", state: "unavailable", branch: null }),
+        expect.objectContaining({ ref: "api#d", state: "stopped", status: "paused" }),
       ],
     });
   });
@@ -161,17 +163,35 @@ describe("NxtvironInstances", () => {
           instance({}),
           instance({ ref: "web#main", process: "web", status: "stopped" }),
           instance({ ref: "job#main", process: "job", status: "missing" }),
+          instance({ ref: "paused#main", process: "paused", status: "paused" }),
         ),
       },
       ({ service, calls }) =>
         Effect.gen(function* () {
           yield* service.act({ ref: "api#main", action: "stop" });
+          yield* service.act({ ref: "api#main", action: "restart" });
           yield* service.act({ ref: "web#main", action: "resume" });
+          yield* service.act({ ref: "job#main", action: "resume" });
+          yield* service.act({ ref: "paused#main", action: "resume" });
           yield* service.act({ ref: "job#main", action: "delete" });
           const config = "/home/u/.config/nxtviron/config.yml";
           expect(actionCalls(calls)).toEqual([
             {
               args: ["--json", "--config", config, "stop", "api", "--instance", "main"],
+              cwd: "/work/repo",
+            },
+            {
+              args: [
+                "--json",
+                "--config",
+                config,
+                "start",
+                "api",
+                "--instance",
+                "main",
+                "--action",
+                "restart",
+              ],
               cwd: "/work/repo",
             },
             {
@@ -188,6 +208,20 @@ describe("NxtvironInstances", () => {
               ],
               cwd: "/work/repo",
             },
+            ...["job", "paused"].map((process) => ({
+              args: [
+                "--json",
+                "--config",
+                config,
+                "start",
+                process,
+                "--instance",
+                "main",
+                "--action",
+                "restart",
+              ],
+              cwd: "/work/repo",
+            })),
             { args: ["--json", "delete", "job#main"], cwd: "/work/repo" },
           ]);
         }),
@@ -249,8 +283,8 @@ describe("NxtvironInstances", () => {
         Effect.gen(function* () {
           const unknown = yield* Effect.flip(service.act({ ref: "nope#x", action: "delete" }));
           expect(unknown.code).toBe("not_found");
-          const resume = yield* Effect.flip(service.act({ ref: "job#main", action: "resume" }));
-          expect(resume.code).toBe("invalid_state");
+          const stop = yield* Effect.flip(service.act({ ref: "job#main", action: "stop" }));
+          expect(stop.code).toBe("invalid_state");
           expect(actionCalls(calls)).toEqual([]);
         }),
     ),
