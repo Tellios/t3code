@@ -21,6 +21,7 @@ import {
   ChevronUpIcon,
   GlobeIcon,
   PlayIcon,
+  RotateCwIcon,
   SquareIcon,
   Trash2Icon,
 } from "lucide-react";
@@ -49,7 +50,7 @@ interface ServerRowAction {
   readonly label: string;
   readonly tooltip: string;
   readonly destructive: boolean;
-  readonly icon: "stop" | "resume" | "delete";
+  readonly icon: NxtvironInstanceAction;
   readonly run: () => Promise<void>;
 }
 
@@ -80,10 +81,16 @@ const NXTVIRON_ACTION_COPY: Record<
 > = {
   stop: { verb: "Stop", tooltip: "Stop instance", failure: "Could not stop instance" },
   resume: { verb: "Resume", tooltip: "Resume instance", failure: "Could not resume instance" },
+  restart: { verb: "Restart", tooltip: "Restart instance", failure: "Could not restart instance" },
   delete: { verb: "Delete", tooltip: "Delete instance", failure: "Could not delete instance" },
 };
 
-const ACTION_ICONS = { stop: SquareIcon, resume: PlayIcon, delete: Trash2Icon } as const;
+const ACTION_ICONS = {
+  stop: SquareIcon,
+  resume: PlayIcon,
+  restart: RotateCwIcon,
+  delete: Trash2Icon,
+} as const;
 
 interface ThreadServersPanelProps {
   readonly environmentId: EnvironmentId;
@@ -202,7 +209,7 @@ function ThreadServersList(props: ThreadServersPanelProps) {
                 id: `${key}:${action}`,
                 label: `${copy.verb} ${instance.ref}`,
                 tooltip: copy.tooltip,
-                destructive: action !== "resume",
+                destructive: action === "stop" || action === "delete",
                 icon: action,
                 run: async () => {
                   const result = await actOnInstance({
