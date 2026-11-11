@@ -325,6 +325,9 @@ function makeService(input: {
   readonly providers: ReadonlyArray<PullRequestProviderApi>;
   readonly resolveHandle?: SourceControlProviderRegistry.SourceControlProviderRegistry["Service"]["resolveHandle"];
   readonly resolveRepositoryIdentity?: RepositoryIdentityResolver.RepositoryIdentityResolver["Service"]["resolve"];
+  readonly resolveRepositoryIdentities?: (
+    cwd: string,
+  ) => Effect.Effect<ReadonlyArray<NonNullable<OrchestrationProjectShell["repositoryIdentity"]>>>;
   readonly onProjectRead?: () => void;
 }) {
   // Build in the test scope; per-call Effect.provide would close the marks database on service acquisition.
@@ -363,6 +366,16 @@ function makeService(input: {
         }),
         Layer.mock(RepositoryIdentityResolver.RepositoryIdentityResolver)({
           resolve: input.resolveRepositoryIdentity ?? (() => Effect.succeed(null)),
+          resolveAll:
+            input.resolveRepositoryIdentities ??
+            ((cwd) =>
+              Effect.succeed(
+                input.projects.flatMap((project) =>
+                  project.workspaceRoot === cwd && project.repositoryIdentity
+                    ? [project.repositoryIdentity]
+                    : [],
+                ),
+              )),
         }),
         SourceControlRateLimit.layer,
         PullRequestFilesViewed.layer.pipe(Layer.provide(SqlitePersistence.layerMemory)),
@@ -2282,6 +2295,92 @@ it.effect.each(["list", "listStats"] as const)(
     }),
 );
 
+it.effect("lists assigned pull requests from every remote of the selected project", () =>
+  Effect.gen(function* () {
+    const fork = project({ id: "p1", title: "web", workspaceRoot: "/a", repository: "viewer/web" });
+    const upstream = project({
+      id: "p1",
+      title: "web",
+      workspaceRoot: "/a",
+      repository: "acme/web",
+    });
+    const asked: string[] = [];
+    const service = yield* makeService({
+      projects: [
+        fork,
+        project({ id: "p2", title: "other", workspaceRoot: "/b", repository: "acme/other" }),
+      ],
+      resolveRepositoryIdentities: () =>
+        Effect.succeed([
+          fork.repositoryIdentity!,
+          upstream.repositoryIdentity!,
+          upstream.repositoryIdentity!,
+        ]),
+      providers: [
+        fakePullRequestProvider(SourceControlProviderKind.make("github"), {
+          listChangeRequests: (input) => {
+            asked.push(input.repository);
+            assert.strictEqual(input.involvement, "assigned");
+            return Effect.succeed({
+              items:
+                input.repository === "acme/web" ? [changeRequest(7, "2026-07-02T00:00:00Z")] : [],
+              truncated: false,
+              continues: false,
+            });
+          },
+        }),
+      ],
+    });
+    const result = yield* service.list({
+      state: "open",
+      involvement: "assigned",
+      projectIds: [fork.id],
+    });
+    assert.deepStrictEqual(asked.toSorted(), ["acme/web", "viewer/web"]);
+    assert.deepStrictEqual(
+      result.entries.map((entry) => [entry.projectId, entry.repository, entry.number]),
+      [[fork.id, "acme/web", 7]],
+    );
+  }),
+);
+
+it.effect("refuses unsupported assignment filters instead of listing unrelated pull requests", () =>
+  Effect.gen(function* () {
+    let calls = 0;
+    const service = yield* makeService({
+      projects: [
+        project({
+          id: "p1",
+          title: "web",
+          workspaceRoot: "/a",
+          repository: "acme/web",
+          provider: "azure-devops",
+          host: "dev.azure.com",
+        }),
+      ],
+      providers: [
+        fakePullRequestProvider(SourceControlProviderKind.make("azure-devops"), {
+          listChangeRequests: () => {
+            calls += 1;
+            return Effect.succeed({
+              items: [changeRequest(1, "2026-07-02T00:00:00Z")],
+              truncated: false,
+              continues: false,
+            });
+          },
+        }),
+      ],
+    });
+    const result = yield* service.list({ state: "open", involvement: "assigned" });
+    assert.deepStrictEqual(result.entries, []);
+    assert.strictEqual(
+      result.errors[0]?.message,
+      "Assigned pull requests are not supported by this host.",
+    );
+    assert.strictEqual(calls, 0);
+  }),
+);
+
 it.effect("shares one cold viewer lookup across distinct concurrent lists", () =>
   Effect.gen(function* () {
     let viewerCalls = 0;
@@ -2304,17 +2403,17 @@ it.effect("shares one cold viewer lookup across distinct concurrent lists", () =
     });
 
     yield* Effect.forEach(
-      ["all", "authored", "reviewing"],
+      ["all", "authored", "reviewing", "assigned"] as const,
       (involvement) =>
         service.list({
           state: "open",
-          involvement: involvement as "all" | "authored" | "reviewing",
+          involvement,
         }),
       { concurrency: "unbounded" },
     );
 
     assert.strictEqual(viewerCalls, 1);
-    assert.strictEqual(listCalls, 3);
+    assert.strictEqual(listCalls, 4);
   }),
 );
 

@@ -859,6 +859,7 @@ function searchQuery(input: {
     ...(input.state === "open" ? ["is:open"] : []),
     ...(input.state === "closed" ? ["is:closed", "is:unmerged"] : []),
     ...(input.state === "merged" ? ["is:merged"] : []),
+    ...(input.involvement === "assigned" ? [`assignee:${input.viewer}`] : []),
     ...(input.involvement === "authored" ? [`author:${input.viewer}`] : []),
     ...(input.involvement === "reviewing" ? [`review-requested:${input.viewer}`] : []),
     ...(query.length === 0 ? [] : [searchPhrase(query)]),
@@ -1893,7 +1894,11 @@ export const make = Effect.gen(function* () {
       const hasQuery = (input.query?.trim().length ?? 0) > 0;
       const listed = read(true).pipe(
         Effect.filterOrElse(
-          (batch) => batch.items.length > 0 || input.cursor !== undefined || hasQuery,
+          (batch) =>
+            batch.items.length > 0 ||
+            input.cursor !== undefined ||
+            hasQuery ||
+            input.involvement === "assigned",
           () => read(false),
         ),
         Effect.filterOrElse(

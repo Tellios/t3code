@@ -53,6 +53,7 @@ it.effect("publishes repository completion while favicon enrichment is still pen
     const releaseFavicon = yield* Deferred.make<void>();
     const layerMetadata = Layer.merge(
       Layer.succeed(RepositoryIdentityResolver.RepositoryIdentityResolver, {
+        resolveAll: () => Effect.succeed([]),
         resolve: (workspaceRoot) => Effect.succeed(identity(workspaceRoot)),
       }),
       Layer.succeed(ProjectFaviconResolver.ProjectFaviconResolver, {
@@ -82,6 +83,7 @@ it.effect("keeps repository workers available when every favicon worker is hung"
     const faviconStarts = yield* Ref.make(0);
     const layerMetadata = Layer.merge(
       Layer.succeed(RepositoryIdentityResolver.RepositoryIdentityResolver, {
+        resolveAll: () => Effect.succeed([]),
         resolve: (workspaceRoot) => Effect.succeed(identity(workspaceRoot)),
       }),
       Layer.succeed(ProjectFaviconResolver.ProjectFaviconResolver, {
@@ -132,6 +134,7 @@ it.effect(
       const releaseRepository = yield* Deferred.make<void>();
       const layerMetadata = Layer.merge(
         Layer.succeed(RepositoryIdentityResolver.RepositoryIdentityResolver, {
+          resolveAll: () => Effect.succeed([]),
           resolve: (workspaceRoot) => {
             if (workspaceRoot === "/no-remote") {
               return Effect.succeed(null);
@@ -195,6 +198,7 @@ it.effect("deduplicates requests, bounds pending work, and reloads invalidated r
     const version = yield* Ref.make(1);
     const layerMetadata = Layer.merge(
       Layer.succeed(RepositoryIdentityResolver.RepositoryIdentityResolver, {
+        resolveAll: () => Effect.succeed([]),
         resolve: (workspaceRoot) =>
           Effect.gen(function* () {
             yield* Ref.update(repositoryCalls, (calls) => [...calls, workspaceRoot]);

@@ -30,6 +30,7 @@ export interface RepositoryIdentityResolverOptions {
 export class RepositoryIdentityResolver extends Context.Service<
   RepositoryIdentityResolver,
   {
+    readonly resolveAll: (cwd: string) => Effect.Effect<ReadonlyArray<RepositoryIdentity>>;
     readonly resolve: (
       cwd: string,
       options?: { readonly refresh?: boolean },
@@ -221,11 +222,9 @@ const resolveRepositoryIdentityCacheKey = Effect.fn("RepositoryIdentityResolver.
   },
 );
 
-const resolveRepositoryIdentityFromCacheKey = Effect.fn(
-  "RepositoryIdentityResolver.resolveFromCacheKey",
-)(function* (
+const readRepositoryRemotes = Effect.fn("RepositoryIdentityResolver.readRemotes")(function* (
   cacheKey: RepositoryIdentityCacheKey,
-): Effect.fn.Return<RepositoryIdentity | null, never, ProcessRunner.ProcessRunner> {
+) {
   const processRunner = yield* ProcessRunner.ProcessRunner;
   const remoteResult = yield* processRunner
     .run({
@@ -236,10 +235,15 @@ const resolveRepositoryIdentityFromCacheKey = Effect.fn(
     })
     .pipe(Effect.option);
   if (remoteResult._tag === "None" || remoteResult.value.code !== 0) {
-    return null;
+    return new Map<string, string>();
   }
+  return parseRemoteFetchUrls(remoteResult.value.stdout);
+});
 
-  const remotes = parseRemoteFetchUrls(remoteResult.value.stdout);
+const resolveRepositoryIdentityFromCacheKey = Effect.fn(
+  "RepositoryIdentityResolver.resolveFromCacheKey",
+)(function* (cacheKey: RepositoryIdentityCacheKey) {
+  const remotes = yield* readRepositoryRemotes(cacheKey);
   const remote = pickPrimaryRemote(remotes);
   return remote
     ? buildRepositoryIdentity({
@@ -290,17 +294,47 @@ export const make = Effect.fn("RepositoryIdentityResolver.make")(function* (
     { capacity: cacheCapacity, timeToLive },
   );
 
+  const allIdentitiesCache = yield* Cache.makeWith(
+    (cacheKey: RepositoryIdentityCacheKey) =>
+      readRepositoryRemotes(cacheKey).pipe(
+        Effect.flatMap((remotes) =>
+          Effect.forEach(
+            [...remotes],
+            ([remoteName, remoteUrl]) => {
+              const identity = buildRepositoryIdentity({
+                remoteName,
+                remoteUrl,
+                rootPath: cacheKey.rootPath,
+                originUrl: remotes.get("origin"),
+              });
+              return refine(identity).pipe(Effect.orElseSucceed(() => identity));
+            },
+            { concurrency: 4 },
+          ),
+        ),
+        Effect.provideService(ProcessRunner.ProcessRunner, processRunner),
+      ),
+    { capacity: cacheCapacity, timeToLive },
+  );
+  const resolveAll = Effect.fn("RepositoryIdentityResolver.resolveAll")(function* (cwd: string) {
+    const cacheKey = yield* Cache.get(repositoryRootCache, cwd);
+    return cacheKey === null ? [] : yield* Cache.get(allIdentitiesCache, cacheKey);
+  });
+
   const resolve: RepositoryIdentityResolver["Service"]["resolve"] = Effect.fnUntraced(
     function* (cwd, options) {
       if (options?.refresh) yield* Cache.invalidate(repositoryRootCache, cwd);
       const cacheKey = yield* Cache.get(repositoryRootCache, cwd);
       if (cacheKey === null) return null;
-      if (options?.refresh) yield* Cache.invalidate(repositoryIdentityCache, cacheKey);
+      if (options?.refresh) {
+        yield* Cache.invalidate(repositoryIdentityCache, cacheKey);
+        yield* Cache.invalidate(allIdentitiesCache, cacheKey);
+      }
       return yield* Cache.get(repositoryIdentityCache, cacheKey);
     },
   );
 
-  return RepositoryIdentityResolver.of({ resolve });
+  return RepositoryIdentityResolver.of({ resolve, resolveAll });
 });
 
 export const layer = Layer.effect(RepositoryIdentityResolver, make()).pipe(

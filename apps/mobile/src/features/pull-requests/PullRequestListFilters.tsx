@@ -12,7 +12,12 @@ import { buildHomeProjectScopes, sortHomeProjectScopes } from "../home/homeThrea
 import { DEFAULT_PR_LIST_CONTROLS, type PullRequestListControls } from "./pullRequestList";
 
 const STATES = { open: "Open", closed: "Closed", merged: "Merged", all: "All states" } as const;
-const INVOLVEMENT = { all: "All PRs", reviewing: "Your review", authored: "By you" } as const;
+const INVOLVEMENT = {
+  assigned: "Assigned to you",
+  all: "All PRs",
+  reviewing: "Your review",
+  authored: "By you",
+} as const;
 const DRAFTS = { all: "All drafts", only: "Drafts only", hide: "Hide drafts" } as const;
 const REVIEWS = {
   all: "All reviews",

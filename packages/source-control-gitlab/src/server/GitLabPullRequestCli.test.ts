@@ -264,7 +264,7 @@ layer("GitLabPullRequestCli.layer", (it) => {
         cwd: "/w",
         repository: "acme/web",
         state: "open",
-        involvement: "all",
+        involvement: "assigned",
         viewer: "bilal",
         limit: 10,
         filters: {
@@ -280,6 +280,8 @@ layer("GitLabPullRequestCli.layer", (it) => {
       expect(params.get("labels")).toBe("bug");
       expect(params.get("not[labels]")).toBe("wontfix,stale");
       expect(params.get("author_username")).toBe("bilal");
+      expect(params.get("assignee_username[]")).toBe("bilal");
+      expect(params.has("reviewer_username")).toBe(false);
       expect(params.get("wip")).toBe("yes");
       expect(params.get("approved_by_usernames[]")).toBe("Any");
     }),
@@ -376,6 +378,17 @@ layer("GitLabPullRequestCli.layer", (it) => {
         });
         expect(graphqlRequestOf(1).variables).toMatchObject({ reviewerUsername: "bilal" });
         expect(graphqlRequestOf(1).variables).not.toHaveProperty("reviewStates");
+        yield* cli.listMergeRequests({
+          cwd: "/w",
+          repository: "acme/web",
+          state: "open",
+          involvement: "assigned",
+          viewer: "bilal",
+          limit: 10,
+          graphql: true,
+        });
+        expect(graphqlRequestOf(2).variables).toMatchObject({ assigneeUsername: "bilal" });
+        expect(graphqlRequestOf(2).variables).not.toHaveProperty("reviewerUsername");
       }),
   );
 

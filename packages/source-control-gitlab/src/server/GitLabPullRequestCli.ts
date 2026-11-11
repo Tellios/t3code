@@ -673,6 +673,8 @@ function involvementParams(input: {
   switch (input.involvement) {
     case "authored":
       return [["author_username", input.viewer]];
+    case "assigned":
+      return [["assignee_username[]", input.viewer]];
     case "reviewing":
       return [["reviewer_username", input.viewer]];
     case "all":
@@ -754,6 +756,9 @@ function graphqlListQuery(input: {
   const args: ReadonlyArray<readonly [name: string, type: string, value: unknown]> = [
     ["state", "MergeRequestState", stateParam(input.state)],
     ...(author === undefined ? [] : [["authorUsername", "String", author] as const]),
+    ...(input.involvement === "assigned"
+      ? [["assigneeUsername", "String", input.viewer] as const]
+      : []),
     ...(input.involvement === "reviewing"
       ? [["reviewerUsername", "String", input.viewer] as const]
       : []),

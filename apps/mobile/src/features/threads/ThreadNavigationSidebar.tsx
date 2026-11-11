@@ -1,3 +1,4 @@
+import { AssignedPullRequestsPanel } from "../pull-requests/AssignedPullRequestsPanel";
 import { useActiveNewTask } from "../../state/active-new-task";
 import { ThreadUndoNotice } from "../home/ThreadUndoNotice";
 import { useAndroidControlSizing } from "../../components/ui/useAndroidControlSizing";
@@ -608,6 +609,7 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
                 showsVerticalScrollIndicator={false}
                 style={styles.threadList}
                 ListEmptyComponent={listEmpty}
+                ListFooterComponent={<AssignedPullRequestsPanel />}
               />
             </GestureDetector>
           </SwipeableScrollGateProvider>
@@ -661,6 +663,7 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
                 showsVerticalScrollIndicator={false}
                 style={styles.threadList}
                 ListEmptyComponent={listEmpty}
+                ListFooterComponent={<AssignedPullRequestsPanel />}
               />
             </GestureDetector>
           </SwipeableScrollGateProvider>

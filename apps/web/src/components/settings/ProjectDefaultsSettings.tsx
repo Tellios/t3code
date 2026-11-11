@@ -106,6 +106,7 @@ export function ProjectDefaultsSettings({ category }: { category: ProjectSetting
   const mixedPermissions = useScopedSettingsMixed(["defaultRuntimeMode"]);
   const PermissionIcon = runtimeModeConfig[settings.defaultRuntimeMode].icon;
   const mixedWorkspace = useScopedSettingsMixed(["defaultThreadEnvMode"]);
+  const mixedAssignedPullRequests = useScopedSettingsMixed(["showAssignedPullRequests"]);
   const mixedAutoPull = useScopedSettingsMixed(["defaultAutoPull"]);
   const mixedDefaultBranch = useScopedSettingsMixed(["defaultBranch"]);
   const branchProject = scope.members.find(
@@ -418,6 +419,23 @@ export function ProjectDefaultsSettings({ category }: { category: ProjectSetting
         </>
       ) : (
         <>
+          {isProjectScope ? (
+            <SettingsRow
+              serverScoped
+              settingKeys={["showAssignedPullRequests"]}
+              mixed={mixedAssignedPullRequests}
+              {...searchableSetting("assigned-pull-requests")}
+              description="Fetch open pull requests assigned to you from this project and show them beneath Settled."
+              control={
+                <Switch
+                  checked={settings.showAssignedPullRequests}
+                  onCheckedChange={(showAssignedPullRequests) =>
+                    updateSettings({ showAssignedPullRequests })
+                  }
+                />
+              }
+            />
+          ) : null}
           {isProjectScope && target && branchProject ? (
             <SettingsRow
               serverScoped

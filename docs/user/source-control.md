@@ -209,6 +209,14 @@ to read its description, activity, commits, and changed files. Line comments sta
 until you submit the review. **Work on PR** opens a chat with the review attached; sending
 the first message prepares a worktree from the review's branch.
 
+To keep track of PRs assigned to you, select a project in **Settings → Source control** and
+enable **Show assigned PRs in sidebar**. This is off by default. The sidebar combines open PRs
+from enabled projects, including drafts, across your environments. Assignment filtering is
+supported for GitHub and GitLab; each environment uses its signed-in account. Select a PR to
+open it in T3 Code or your browser, mark a draft ready, inspect failed CI logs, close it, or
+create a thread on its branch in a worktree. Turn the setting off to stop fetching that project's
+assigned PRs for the sidebar.
+
 Previously loaded lists, review details, guides, and diff pages remain readable on mobile
 without a connection, including after restarting the app. Saved content refreshes when the
 environment reconnects; submitting changes requires a connection.

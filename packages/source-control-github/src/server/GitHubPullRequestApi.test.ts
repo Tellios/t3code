@@ -2020,6 +2020,25 @@ layer("GitHubPullRequestApi.layer", (it) => {
     }),
   );
 
+  it.effect("queries assignees and keeps an empty assigned list empty", () =>
+    Effect.gen(function* () {
+      mockedExecute.mockReturnValueOnce(Effect.succeed(emptySearch()));
+      const cli = yield* GitHubPullRequestApi.GitHubPullRequestApi;
+      const batch = yield* cli.listPullRequests({
+        cwd: "/w",
+        repository: "acme/web",
+        host: "github.com",
+        state: "open",
+        involvement: "assigned",
+        viewer: "bilal",
+        limit: 10,
+      });
+      expect(searchOfCall(0)).toBe("is:pr is:open assignee:bilal sort:updated-desc repo:acme/web");
+      expect(batch.items).toEqual([]);
+      expect(mockedExecute.mock.calls).toHaveLength(1);
+    }),
+  );
+
   it.effect("keeps state and involvement filters on the search-free fallback", () =>
     Effect.gen(function* () {
       mockedExecute.mockReturnValueOnce(Effect.succeed(emptySearch()));

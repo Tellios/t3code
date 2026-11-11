@@ -856,11 +856,16 @@ export const make = Effect.gen(function* () {
   });
 
   const listWorkspaceProjects = (
-    filter: Pick<PullRequestListInput, "projectId" | "projectIds" | "host">,
+    filter: Pick<PullRequestListInput, "projectId" | "projectIds" | "host" | "involvement">,
   ): Effect.Effect<WorkspaceProjects, PullRequestError> =>
     Effect.flatMap(sharedProjectReads, (shared) => {
       if (shared === null || !shared.open) return readWorkspaceProjects(filter);
-      const key = JSON.stringify([filter.projectId, filter.projectIds, filter.host]);
+      const key = JSON.stringify([
+        filter.projectId,
+        filter.projectIds,
+        filter.host,
+        filter.involvement,
+      ]);
       const existing = shared.reads.get(key);
       if (existing !== undefined) return existing;
       return Effect.cached(readWorkspaceProjects(filter)).pipe(
@@ -884,7 +889,7 @@ export const make = Effect.gen(function* () {
     });
 
   const readWorkspaceProjects = (
-    filter: Pick<PullRequestListInput, "projectId" | "projectIds" | "host">,
+    filter: Pick<PullRequestListInput, "projectId" | "projectIds" | "host" | "involvement">,
   ): Effect.Effect<WorkspaceProjects, PullRequestError> =>
     (filter.projectId === undefined
       ? projects.listShells(
@@ -911,6 +916,25 @@ export const make = Effect.gen(function* () {
                   .pipe(Effect.map((repositoryIdentity) => ({ ...project, repositoryIdentity }))),
           { concurrency: REPOSITORY_CONCURRENCY },
         ),
+      ),
+      Effect.filterOrElse(
+        () => filter.involvement !== "assigned",
+        (projects) =>
+          Effect.forEach(
+            projects,
+            (project) =>
+              repositoryIdentities.resolveAll(project.workspaceRoot).pipe(
+                Effect.map((identities) =>
+                  identities.length === 0
+                    ? [project]
+                    : identities.map((repositoryIdentity) => ({
+                        ...project,
+                        repositoryIdentity,
+                      })),
+                ),
+              ),
+            { concurrency: REPOSITORY_CONCURRENCY },
+          ).pipe(Effect.map((expanded) => expanded.flat())),
       ),
       Effect.flatMap((projects) =>
         resolveRemoteHosts(projects, filter).pipe(
@@ -1365,6 +1389,25 @@ export const make = Effect.gen(function* () {
       {
         const viewer = viewers[project.host]!;
         const key = project.cursorKey;
+        if (
+          involvement === "assigned" &&
+          project.api.kind !== "github" &&
+          project.api.kind !== "gitlab"
+        ) {
+          return Effect.succeed({
+            key,
+            entries: [],
+            errors: [
+              {
+                projectId: project.project.id,
+                projectTitle: project.project.title,
+                message: "Assigned pull requests are not supported by this host.",
+              },
+            ],
+            truncated: false,
+            nextCursor: null,
+          });
+        }
         return project.api
           .listChangeRequests({
             cwd: project.project.workspaceRoot,
@@ -1475,7 +1518,11 @@ export const make = Effect.gen(function* () {
       const readAcross = first.api.listChangeRequestsAcross;
       const separately = () =>
         Effect.forEach(chunk, readRepository, { concurrency: REPOSITORY_CONCURRENCY });
-      if (readAcross === undefined) return separately();
+      if (
+        readAcross === undefined ||
+        (involvement === "assigned" && first.api.kind !== "github" && first.api.kind !== "gitlab")
+      )
+        return separately();
       const viewer = viewers[first.host]!;
       const cursor = cursorOf(first);
       return readAcross({

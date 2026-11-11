@@ -300,6 +300,19 @@ it.layer(NodeServices.layer)("RepositoryIdentityResolverLive", (it) => {
         remoteUrl: "git@github.com:julius/t3code-fork.git",
         displayName: "julius/t3code-fork",
       });
+      yield* git(cwd, ["remote", "add", "custom", "git@github.com:T3Tools/other.git"]);
+      expect(
+        (yield* resolver.resolveAll(cwd)).map((remote) => remote.canonicalKey).toSorted(),
+      ).toEqual([
+        "github.com/julius/t3code-fork",
+        "github.com/t3tools/other",
+        "github.com/t3tools/t3code",
+      ]);
+      expect((yield* resolver.resolve(cwd))?.canonicalKey).toBe("github.com/t3tools/t3code");
+      yield* git(cwd, ["remote", "remove", "custom"]);
+      expect((yield* resolver.resolveAll(cwd)).length).toBe(3);
+      yield* resolver.resolve(cwd, { refresh: true });
+      expect((yield* resolver.resolveAll(cwd)).length).toBe(2);
     }).pipe(Effect.provide(RepositoryIdentityResolver.layer)),
   );
 

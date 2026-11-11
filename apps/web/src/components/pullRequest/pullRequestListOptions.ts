@@ -10,6 +10,7 @@ import {
   Minimize2Icon,
   PenLineIcon,
   UserLockIcon,
+  UserIcon,
 } from "lucide-react";
 
 import type { PullRequestFilterOption } from "./PullRequestListFilters";
@@ -20,6 +21,7 @@ export const INVOLVEMENT_TABS = [
   { value: "all", label: "All", Icon: LayersIcon },
   { value: "reviewing", label: "Reviewing", Icon: EyeIcon },
   { value: "authored", label: "Authored", Icon: PenLineIcon },
+  { value: "assigned", label: "Assigned", Icon: UserIcon },
 ] as const satisfies ReadonlyArray<PullRequestFilterOption<PullRequestInvolvement>>;
 
 export const STATE_TABS = [

@@ -1,3 +1,8 @@
+export {
+  assignedPullRequestProjects,
+  assignedPullRequestTargets,
+  uniqueAssignedPullRequests,
+} from "../assignedPullRequests.ts";
 import {
   WS_METHODS,
   PullRequestActivity,
