@@ -10,6 +10,7 @@ import {
   Minimize2Icon,
   PenLineIcon,
   UserLockIcon,
+  UserIcon,
 } from "lucide-react";
 import { msg } from "gt-react";
 
@@ -30,6 +31,11 @@ export const INVOLVEMENT_TABS = [
     value: "authored",
     label: msg("Authored", { $context: "pull request filter" }),
     Icon: PenLineIcon,
+  },
+  {
+    value: "assigned",
+    label: msg("Assigned", { $context: "pull request filter" }),
+    Icon: UserIcon,
   },
 ] as const satisfies ReadonlyArray<PullRequestFilterOption<PullRequestInvolvement>>;
 

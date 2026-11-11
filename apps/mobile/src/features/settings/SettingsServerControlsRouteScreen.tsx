@@ -65,7 +65,12 @@ const PAGE_PROJECT_KEYS: Record<SettingsPage, readonly ProjectScopedServerSettin
     "sidebarAutoSettleOnMerge",
     "sidebarAutoSettleAfterDays",
   ],
-  "source-control": ["defaultBranch", "defaultAutoPull", "removeAgentCreditsOnMerge"],
+  "source-control": [
+    "showAssignedPullRequests",
+    "defaultBranch",
+    "defaultAutoPull",
+    "removeAgentCreditsOnMerge",
+  ],
   worktrees: [
     "newWorktreesStartFromOrigin",
     "worktreeSubmodules",
@@ -422,6 +427,20 @@ function ServerSettingsDetail(props: { readonly page: SettingsPage }) {
                 )}
                 {projectSelected ? null : <IssueTrackerSection environments={selectedTargets} />}
                 <SettingsSection title={gt("Pull requests")}>
+                  {projectSelected ? (
+                    <SettingsSwitchRow
+                      icon={PullRequestGlyph.merged}
+                      label={gt("Show assigned PRs in sidebar")}
+                      subtitle={gt(
+                        "Fetch open pull requests assigned to you from this project and show them beneath Settled.",
+                      )}
+                      value={uniform("showAssignedPullRequests")}
+                      disabled={disabledFor("showAssignedPullRequests")}
+                      onValueChange={(showAssignedPullRequests) =>
+                        write({ showAssignedPullRequests })
+                      }
+                    />
+                  ) : null}
                   <SettingsSwitchRow
                     icon={PullRequestGlyph.merged}
                     label={gt("Remove agent credits when merging")}

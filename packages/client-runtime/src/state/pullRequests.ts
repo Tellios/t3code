@@ -1,5 +1,10 @@
 import { msg } from "gt-i18n";
 import { MarkedText, translatableMessage } from "../errors/translatable.ts";
+export {
+  assignedPullRequestProjects,
+  assignedPullRequestTargets,
+  uniqueAssignedPullRequests,
+} from "../assignedPullRequests.ts";
 import {
   WS_METHODS,
   PullRequestActivity,

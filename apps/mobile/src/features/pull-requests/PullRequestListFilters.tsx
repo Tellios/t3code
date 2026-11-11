@@ -21,6 +21,7 @@ const STATES = {
   all: msg("All states"),
 };
 const INVOLVEMENT = {
+  assigned: msg("Assigned to you"),
   all: msg("All PRs"),
   reviewing: msg("Your review"),
   authored: msg("By you"),

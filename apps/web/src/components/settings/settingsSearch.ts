@@ -1186,6 +1186,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: [msg("agent opens browser device simulator pop into view hide")],
   },
   {
+    id: "assigned-pull-requests",
+    title: "Show assigned PRs in sidebar",
+    to: "/settings/source-control",
+    scope: "project",
+    searchTerms: ["pull requests assignee assigned sidebar settled"],
+  },
+  {
     id: "default-branch",
     title: "Default branch",
     to: "/settings/source-control",

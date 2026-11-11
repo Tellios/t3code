@@ -14,7 +14,7 @@ import {
 } from "./baseSchemas.ts";
 import { SourceControlProviderKind } from "./sourceControl.ts";
 
-export const PullRequestInvolvement = Schema.Literals(["all", "reviewing", "authored"]);
+export const PullRequestInvolvement = Schema.Literals(["all", "reviewing", "authored", "assigned"]);
 export type PullRequestInvolvement = typeof PullRequestInvolvement.Type;
 
 export const PullRequestState = Schema.Literals(["open", "closed", "merged"]);

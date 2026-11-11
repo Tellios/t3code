@@ -274,6 +274,7 @@ function involvementArgs(input: {
       return ["--creator", input.viewer];
     case "reviewing":
       return ["--reviewer", input.viewer];
+    case "assigned":
     case "all":
       return [];
   }

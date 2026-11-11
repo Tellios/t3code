@@ -955,6 +955,7 @@ function searchQuery(input: {
     ...(input.state === "open" ? ["is:open"] : []),
     ...(input.state === "closed" ? ["is:closed", "is:unmerged"] : []),
     ...(input.state === "merged" ? ["is:merged"] : []),
+    ...(input.involvement === "assigned" ? [`assignee:${input.viewer}`] : []),
     ...(input.involvement === "authored" ? [`author:${input.viewer}`] : []),
     ...(input.involvement === "reviewing" ? [`review-requested:${input.viewer}`] : []),
     ...(query.length === 0 ? [] : [searchPhrase(query)]),
@@ -1961,8 +1962,12 @@ export const make = Effect.gen(function* () {
           }),
         );
       // Unindexed repositories silently return no search rows, and search can fail while the
-      // listing answers. The listing cannot apply a text query or an `updated:<=` cursor.
-      const listingServes = input.cursor === undefined && (input.query?.trim().length ?? 0) === 0;
+      // listing answers. The listing cannot apply a text query, an `updated:<=` cursor, or an
+      // assignee filter.
+      const listingServes =
+        input.cursor === undefined &&
+        (input.query?.trim().length ?? 0) === 0 &&
+        input.involvement !== "assigned";
       const listed = read(true).pipe(
         Effect.matchEffect({
           onSuccess: (batch) =>

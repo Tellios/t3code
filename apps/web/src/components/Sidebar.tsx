@@ -1,6 +1,7 @@
 import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
 import { msg, T, useGT, useMessages } from "gt-react";
 import { m } from "../i18n/messages";
+import { AssignedPullRequestsPanel } from "./pullRequest/AssignedPullRequestsPanel";
 import { attachSidebarTree } from "../lib/sidebarTree";
 import { type EnvironmentId, type ScopedProjectRef } from "@t3tools/contracts";
 import type { EnvironmentServerConfig } from "@t3tools/client-runtime/connection";
@@ -3699,6 +3700,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                   </ul>
                 </SortableContext>
               </DndContext>
+              <AssignedPullRequestsPanel threadRef={routeThreadRef} />
             </TooltipProvider>
           ) : null}
         </SidebarGroup>
