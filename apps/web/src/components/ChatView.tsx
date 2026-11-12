@@ -1954,21 +1954,30 @@ export default function ChatView(props: ChatViewProps) {
   const activeProjectRepository = sourceControlClients.repositorySelector(
     activeProject?.repositoryIdentity,
   );
-  const {
-    linked: linkedThreadPullRequest,
-    linkedKey: linkedThreadPullRequestKey,
-    hasDetail: hasLinkedPullRequestDetail,
-  } = useThreadLinkedPullRequest({
-    serverThreadRef: isServerThread ? activeThreadRef : null,
-    environmentId: activeThreadRef?.environmentId ?? null,
-    persisted: isServerThread
-      ? (activeThreadShell?.linkedPullRequest ?? activeThread?.linkedPullRequest ?? null)
-      : (activeThread?.linkedPullRequest ?? null),
-    projectId: activeProject?.id ?? null,
-    projectRepository: activeProjectRepository,
-    threadBranch: activeThread?.branch ?? null,
-    gitStatus: gitStatusQuery.data ?? null,
-  });
+  const { linked: linkedThreadPullRequest, linkedKey: linkedThreadPullRequestKey } =
+    useThreadLinkedPullRequest({
+      serverThreadRef: isServerThread ? activeThreadRef : null,
+      environmentId: activeThreadRef?.environmentId ?? null,
+      persisted: isServerThread
+        ? (activeThreadShell?.linkedPullRequest ?? activeThread?.linkedPullRequest ?? null)
+        : (activeThread?.linkedPullRequest ?? null),
+      projectId: activeProject?.id ?? null,
+      projectRepository: activeProjectRepository,
+      threadBranch: activeThread?.branch ?? null,
+      gitStatus: gitStatusQuery.data ?? null,
+    });
+  const onlyVisiblePullRequest = visiblePullRequestCount === 1 ? visiblePullRequests[0] : undefined;
+  const singlePullRequest =
+    linkedThreadPullRequest ??
+    (onlyVisiblePullRequest && activeThread
+      ? {
+          projectId: activeThread.projectId,
+          host: onlyVisiblePullRequest.host,
+          repository: onlyVisiblePullRequest.repository,
+          number: onlyVisiblePullRequest.number,
+          url: onlyVisiblePullRequest.url,
+        }
+      : null);
   const proactivePullRequestsKey = pullRequestsSurfaceAvailable
     ? JSON.stringify(
         visiblePullRequests.map((link) => [link.host, link.repository, link.number]).sort(),
@@ -1986,7 +1995,7 @@ export default function ChatView(props: ChatViewProps) {
     turnDiffSummaries,
     isGitRepo: gitStatusQuery.data?.isRepo,
     linkedPullRequest: linkedThreadPullRequest,
-    hasLinkedPullRequestDetail,
+    singlePullRequest,
     pullRequestsKey: proactivePullRequestsKey,
     pullRequestsCapabilityKnown,
     supportsPullRequests,

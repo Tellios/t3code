@@ -100,6 +100,5 @@ export function useThreadLinkedPullRequest(input: {
   return {
     linked,
     linkedKey: linked ? JSON.stringify([linked.projectId, linked.repository, linked.number]) : null,
-    hasDetail: persisted !== null,
   };
 }
