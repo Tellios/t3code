@@ -37,7 +37,8 @@ export function useProactivePanels(input: {
   readonly turnDiffSummaries: ReadonlyArray<TurnDiffSummary>;
   readonly isGitRepo: boolean | undefined;
   readonly linkedPullRequest: ThreadLinkedPullRequest | null;
-  readonly hasLinkedPullRequestDetail: boolean;
+  // The PR to open on its own when the thread has exactly one.
+  readonly singlePullRequest: Parameters<typeof pullRequestSurface>[0] | null;
   readonly pullRequestsKey: string | null;
   readonly pullRequestsCapabilityKnown: boolean;
   readonly supportsPullRequests: boolean;
@@ -56,7 +57,7 @@ export function useProactivePanels(input: {
     turnDiffSummaries,
     isGitRepo,
     linkedPullRequest: linkedThreadPullRequest,
-    hasLinkedPullRequestDetail,
+    singlePullRequest,
     pullRequestsKey: proactivePullRequestsKey,
     pullRequestsCapabilityKnown,
     supportsPullRequests,
@@ -123,23 +124,15 @@ export function useProactivePanels(input: {
       if (
         !followSelectedPullRequest &&
         pullRequestsSurfaceAvailable &&
-        (visiblePullRequestCount > 1 || !hasLinkedPullRequestDetail || !supportsPullRequests)
+        visiblePullRequestCount > 1
       ) {
         panels.openProactive(
           threadRef,
           { id: "pull-requests", kind: "pull-requests" },
           userActionRevision,
         );
-      } else if (
-        !followSelectedPullRequest &&
-        supportsPullRequests &&
-        linkedThreadPullRequest !== null
-      ) {
-        panels.openProactive(
-          threadRef,
-          pullRequestSurface(linkedThreadPullRequest),
-          userActionRevision,
-        );
+      } else if (!followSelectedPullRequest && supportsPullRequests && singlePullRequest !== null) {
+        panels.openProactive(threadRef, pullRequestSurface(singlePullRequest), userActionRevision);
       }
     }
     if (threadDetailLoading) return;
@@ -192,7 +185,6 @@ export function useProactivePanels(input: {
     activeLatestRun?.status,
     activeRunningTurnId,
     clientSettingsHydrated,
-    hasLinkedPullRequestDetail,
     isGitRepo,
     latestRunSettled,
     linkedThreadPullRequest,
@@ -200,6 +192,7 @@ export function useProactivePanels(input: {
     proactivePanelsEnabledSetting,
     proactivePullRequestsKey,
     pullRequestsCapabilityKnown,
+    singlePullRequest,
     pullRequestsSurfaceAvailable,
     supportsPullRequests,
     threadDetailLoading,
