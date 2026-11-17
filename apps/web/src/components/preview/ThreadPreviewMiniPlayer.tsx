@@ -239,7 +239,7 @@ function BrowserMiniPlayer({ threadRef, tabId, miniPlayer }: Props & { readonly 
 
   const openInPanel = () => {
     usePreviewMiniPlayerStore.getState().close(threadRef);
-    useRightPanelStore.getState().openBrowser(threadRef, tabId);
+    useRightPanelStore.getState().openBrowser(threadRef, tabId, threadRef.threadId);
   };
 
   const toggleNativePictureInPicture = async () => {

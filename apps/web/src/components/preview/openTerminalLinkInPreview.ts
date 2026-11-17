@@ -8,7 +8,7 @@ import type { OpenPreviewMutation } from "~/browser/openFileInPreview";
 import { isPreviewAvailableFor, previewRuntimeFor } from "~/browser/previewRuntime";
 import { recordVisitForThread } from "~/browserHistoryStore";
 import { applyPreviewServerSnapshot } from "~/previewStateStore";
-import { useRightPanelStore } from "~/rightPanelStore";
+import { rightPanelHostRef, useRightPanelStore } from "~/rightPanelStore";
 
 const terminalLinkErrorContext = {
   environmentId: Schema.String,
@@ -37,6 +37,7 @@ interface OpenTerminalLinkInPreviewInput<E> {
 export async function openTerminalLinkInPreview<E>(
   input: OpenTerminalLinkInPreviewInput<E>,
 ): Promise<void> {
+  input = { ...input, threadRef: rightPanelHostRef(input.threadRef) };
   const supportsPreview =
     !input.forceBrowser &&
     isWebUrl(input.url) &&

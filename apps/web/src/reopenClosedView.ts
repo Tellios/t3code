@@ -115,7 +115,7 @@ export async function reopenClosedView(
         : { colorScheme: view.snapshot.colorScheme }),
     });
     if (result._tag === "Failure") return false;
-    panels.openBrowser(ref, result.value.tabId);
+    panels.openBrowser(ref, result.value.tabId, result.value.threadId);
     return true;
   }
   const surface = view.surface;

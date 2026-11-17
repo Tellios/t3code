@@ -76,7 +76,7 @@ import {
   ProviderInstanceId,
   type ServerProvider,
   type ScopedThreadRef,
-  type ThreadId,
+  ThreadId,
   ProviderInteractionMode,
   resolveIdleCompaction,
   RuntimeMode,
@@ -179,9 +179,12 @@ import {
   selectActiveRightPanelSurface,
   selectThreadPanelOpen,
   selectThreadRightPanelState,
+  sharedRightPanelRef,
+  panelSurfaceThreadRef,
   useRightPanelStore,
 } from "../rightPanelStore";
-import { isPreviewSupportedInRuntime, useThreadPreviewState } from "../previewStateStore";
+import { isPreviewSupportedInRuntime } from "../previewStateStore";
+import { useSharedPanelPreviews } from "../hooks/useSharedPanelPreviews";
 import { previewRuntimeTabId } from "../browser/previewRuntimeTabId";
 import {
   ThreadPreviewMiniPlayer,
@@ -1022,17 +1025,8 @@ export default function ChatView(props: ChatViewProps) {
   const activeServerOrderedTerminalIds = activeThreadKnownSessions.map(
     (session) => session.target.terminalId,
   );
-  const activeTerminalLabelsById = (() => {
-    const labels = new Map<string, string>();
-    for (const session of activeThreadKnownSessions) {
-      labels.set(
-        session.target.terminalId,
-        resolveTerminalSessionLabel(session.target.terminalId, session.state.summary, messages),
-      );
-    }
-    return labels;
-  })();
   const activeThreadRef = useActiveThreadRef(activeThread);
+  const panelThreadRef = activeThreadRef ? sharedRightPanelRef(activeThreadRef) : null;
   const activeThreadKey = activeThreadRef ? scopedThreadKey(activeThreadRef) : null;
   const activeEnvironmentServerBrowser = useEnvironmentSupportsServerBrowser(
     activeThreadRef?.environmentId ?? null,
@@ -1092,14 +1086,46 @@ export default function ChatView(props: ChatViewProps) {
   const activeRightPanelSurface = useRightPanelStore((state) =>
     selectActiveRightPanelSurface(state.byThreadKey, activeThreadRef),
   );
-  const activePreviewState = useThreadPreviewState(activeThreadRef);
+  const { previewState: activePreviewState, threadRefs: panelPreviewThreadRefs } =
+    useSharedPanelPreviews(panelThreadRef);
   const activePreviewServerEpoch = activePreviewState.serverEpoch;
-  const resolvePreviewRuntimeTabId = activeThreadRef
-    ? (tabId: string) => previewRuntimeTabId(activeThreadRef, activePreviewServerEpoch, tabId)
+  const resolvePreviewRuntimeTabId = panelThreadRef
+    ? (tabId: string) =>
+        previewRuntimeTabId(
+          scopeThreadRef(
+            panelThreadRef.environmentId,
+            ThreadId.make(activePreviewState.sessions[tabId]?.threadId ?? panelThreadRef.threadId),
+          ),
+          activePreviewServerEpoch,
+          tabId,
+        )
     : undefined;
+  const previewMiniPlayerThreadRef = usePreviewMiniPlayerStore((state) => {
+    const selected = rightPanelState.surfaces.find(
+      (surface) => surface.id === rightPanelState.activeSurfaceId,
+    );
+    const owner =
+      panelThreadRef && selected ? panelSurfaceThreadRef(panelThreadRef, selected) : panelThreadRef;
+    return (
+      panelPreviewThreadRefs.find(
+        (ref) =>
+          ref.threadId === owner?.threadId && selectThreadPreviewMiniPlayer(state.byThreadKey, ref),
+      ) ??
+      panelPreviewThreadRefs.find((ref) => selectThreadPreviewMiniPlayer(state.byThreadKey, ref)) ??
+      null
+    );
+  });
   const activePreviewMiniPlayer = usePreviewMiniPlayerStore((state) =>
-    selectThreadPreviewMiniPlayer(state.byThreadKey, activeThreadRef),
+    selectThreadPreviewMiniPlayer(state.byThreadKey, previewMiniPlayerThreadRef),
   );
+  const terminalSurfaceRef =
+    activeThreadRef && activeRightPanelSurface?.kind === "terminal"
+      ? panelSurfaceThreadRef(activeThreadRef, activeRightPanelSurface)
+      : panelThreadRef;
+  const panelTerminalSessions = useKnownTerminalSessions({
+    environmentId: terminalSurfaceRef?.environmentId ?? null,
+    threadId: terminalSurfaceRef?.threadId ?? null,
+  });
   const panelTerminalIds = new Set(
     rightPanelState.surfaces.flatMap((surface) =>
       surface.kind === "terminal" ? surface.terminalIds : [],
@@ -1107,6 +1133,22 @@ export default function ChatView(props: ChatViewProps) {
   );
   const canReuseTerminal = activeThreadKnownSessionsRaw !== null;
   const previewPanelOpen = activeRightPanelKind === "preview" && browserAvailable;
+  const activeTerminalLabelsById = (() => {
+    const labels = new Map<string, string>();
+    for (const session of [
+      ...activeThreadKnownSessions,
+      ...(panelTerminalSessions ?? []).filter((session) =>
+        panelTerminalIds.has(session.target.terminalId),
+      ),
+    ]) {
+      labels.set(
+        session.target.terminalId,
+        resolveTerminalSessionLabel(session.target.terminalId, session.state.summary, messages),
+      );
+    }
+    return labels;
+  })();
+
   const rightPanelOpen = rightPanelState.isOpen;
   const { active: panelAnimationsActive, durationMs: panelAnimationDurationMs } =
     usePanelAnimationSettings();
@@ -1983,7 +2025,10 @@ export default function ChatView(props: ChatViewProps) {
     (activePreviewMiniPlayer.source.kind === "device" || canOperatePreview)
       ? activePreviewMiniPlayer
       : null;
-  const canvasPreview = useThreadPreviewCanvasSource(activeThreadRef, shownPreviewMiniPlayer);
+  const canvasPreview = useThreadPreviewCanvasSource(
+    previewMiniPlayerThreadRef,
+    shownPreviewMiniPlayer,
+  );
   const threadPanelInlineOpen = useRightPanelStore((state) =>
     selectThreadPanelOpen(state.threadPanelVisibilityByThreadKey, activeThreadRef, "inline"),
   );
@@ -2084,7 +2129,7 @@ export default function ChatView(props: ChatViewProps) {
     closeSurfacesToRight: closeRightPanelSurfacesToRightStable,
     closeAllSurfaces: closeAllRightPanelSurfacesStable,
   } = useRightPanelSurfaceClose({
-    threadRef: activeThreadRef,
+    threadRef: panelThreadRef,
     terminalLabelsById: activeTerminalLabelsById,
   });
   const closeRightPanelSurfaceStable = closeRightPanelSurface;
@@ -3292,7 +3337,10 @@ export default function ChatView(props: ChatViewProps) {
       onCloseSurface={closeRightPanelSurface}
       sideChatParentPanel={sideChatParentPanel}
       terminal={{
-        launchContext: activeTerminalLaunchContext ?? null,
+        launchContext:
+          terminalSurfaceRef && scopedThreadKey(terminalSurfaceRef) === activeThreadKey
+            ? (activeTerminalLaunchContext ?? null)
+            : null,
         keybindings,
         onAddTerminalContext: addTerminalContextToDraftStable,
         onSplitTerminal: splitPanelTerminalStable,
@@ -3376,7 +3424,7 @@ export default function ChatView(props: ChatViewProps) {
       {embedded ? null : (
         <DeviceSetupDialogHost
           threadKey={activeThreadKey}
-          threadRef={activeThreadRef}
+          threadRef={panelThreadRef}
           state={deviceState}
         />
       )}
@@ -3917,13 +3965,15 @@ export default function ChatView(props: ChatViewProps) {
               </div>
             </div>
 
-            {canOperatePreview && activeThreadRef && activeEnvironmentServerBrowser && !embedded ? (
-              <PreviewSessionSync threadRef={activeThreadRef} />
-            ) : null}
-            {activeThreadRef && shownPreviewMiniPlayer && !embedded ? (
+            {canOperatePreview && panelThreadRef && activeEnvironmentServerBrowser && !embedded
+              ? panelPreviewThreadRefs.map((ref) => (
+                  <PreviewSessionSync key={scopedThreadKey(ref)} threadRef={ref} />
+                ))
+              : null}
+            {previewMiniPlayerThreadRef && shownPreviewMiniPlayer && !embedded ? (
               <ThreadPreviewMiniPlayer
                 key={`${activeThreadKey}:${previewMiniPlayerSourceKey(shownPreviewMiniPlayer.source)}`}
-                threadRef={activeThreadRef}
+                threadRef={previewMiniPlayerThreadRef}
                 miniPlayer={shownPreviewMiniPlayer}
               />
             ) : null}

@@ -13,10 +13,12 @@ import { m } from "../i18n/messages";
 import { confirmTerminalClose } from "../lib/terminalCloseConfirm";
 import { focusPanelTerminalAfterClose } from "../lib/terminalFocus";
 import { readLocalApi } from "../localApi";
-import { setActivePreviewTab, useThreadPreviewState } from "../previewStateStore";
+import { setActivePreviewTab } from "../previewStateStore";
 import {
   selectActiveRightPanelSurface,
   selectThreadRightPanelState,
+  sharedRightPanelRef,
+  panelSurfaceThreadRef,
   useRightPanelStore,
   type RightPanelSurface,
 } from "../rightPanelStore";
@@ -29,6 +31,7 @@ import { threadEnvironment } from "../state/threads";
 import { useAtomCommand } from "../state/use-atom-command";
 import { useTerminalUiStateStore } from "../terminalUiStateStore";
 import { useStableCallback } from "./useStableCallback";
+import { useSharedPanelPreviews } from "./useSharedPanelPreviews";
 
 /**
  * Closing releases preview and terminal sessions, and deletes a side chat that never ran.
@@ -38,14 +41,15 @@ export function useRightPanelSurfaceClose(input: {
   readonly threadRef: ScopedThreadRef | null;
   readonly terminalLabelsById: ReadonlyMap<string, string>;
 }) {
-  const { threadRef, terminalLabelsById } = input;
+  const { terminalLabelsById } = input;
+  const threadRef = input.threadRef ? sharedRightPanelRef(input.threadRef) : null;
   const closePreview = useAtomCommand(previewEnvironment.close, "preview close");
   const deleteThread = useAtomCommand(threadEnvironment.delete, "side chat delete");
   const canOperatePreview = useEnvironmentScope(
     threadRef?.environmentId ?? null,
     AuthPreviewOperateScope,
   );
-  const previewState = useThreadPreviewState(threadRef);
+  const { previewState } = useSharedPanelPreviews(threadRef);
   const terminalActions = useThreadTerminalActions(threadRef);
   const storeCloseTerminal = useTerminalUiStateStore((state) => state.closeTerminal);
   const surfaces = useRightPanelStore(
@@ -59,16 +63,17 @@ export function useRightPanelSurfaceClose(input: {
         closePreview,
         snapshot: previewState.sessions[surface.resourceId] ?? null,
         tabId: surface.resourceId,
-        threadRef: ref,
+        threadRef: panelSurfaceThreadRef(ref, surface),
       });
     }
     if (
       surface.kind === "terminal" &&
       readEnvironmentScope(ref.environmentId, AuthTerminalOperateScope)
     ) {
+      const owner = panelSurfaceThreadRef(ref, surface);
       for (const terminalId of surface.terminalIds) {
-        storeCloseTerminal(ref, terminalId);
-        terminalActions.closeTerminalSession(terminalId, ref);
+        storeCloseTerminal(owner, terminalId);
+        terminalActions.closeTerminalSession(terminalId, owner);
       }
     }
     if (
@@ -124,7 +129,10 @@ export function useRightPanelSurfaceClose(input: {
       threadRef,
     );
     if (nextActiveSurface?.kind === "preview" && nextActiveSurface.resourceId) {
-      setActivePreviewTab(threadRef, nextActiveSurface.resourceId);
+      setActivePreviewTab(
+        panelSurfaceThreadRef(threadRef, nextActiveSurface),
+        nextActiveSurface.resourceId,
+      );
     }
     focusPanelTerminalAfterClose(threadRef, activeId);
   };

@@ -1,4 +1,6 @@
 import type { AtomCommandResult } from "@t3tools/client-runtime/state/runtime";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { ThreadId } from "@t3tools/contracts";
 import type {
   EnvironmentId,
   PreviewCloseInput,
@@ -25,6 +27,15 @@ interface ClosePreviewSessionInput<E> {
 export async function closePreviewSession<E>(
   input: ClosePreviewSessionInput<E>,
 ): Promise<AtomCommandResult<void, E>> {
+  if (input.snapshot) {
+    input = {
+      ...input,
+      threadRef: scopeThreadRef(
+        input.threadRef.environmentId,
+        ThreadId.make(input.snapshot.threadId),
+      ),
+    };
+  }
   // Unmounting a webview destroys its page, so a tab this window renders stays mounted until the
   // server has unloaded it.
   const keepMounted = rendersServerTabNatively(

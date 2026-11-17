@@ -1,4 +1,4 @@
-import type { ScopedThreadRef } from "@t3tools/contracts";
+import type { PreviewSessionSnapshot, ScopedThreadRef } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/reactivity";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -6,16 +6,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import type { OpenPreviewMutation } from "~/browser/openFileInPreview";
 import * as previewRuntime from "~/browser/previewRuntime";
 import { openTerminalLinkInPreview } from "./openTerminalLinkInPreview";
+import { readThreadPreviewState, resetPreviewStateForTests } from "~/previewStateStore";
+import { selectThreadRightPanelState, useRightPanelStore } from "~/rightPanelStore";
 
-vi.mock("~/previewStateStore", () => ({
-  applyPreviewServerSnapshot: vi.fn(),
-  isPreviewSupportedInRuntime: () => true,
-}));
-
-vi.mock("~/rightPanelStore", () => ({
-  useRightPanelStore: {
-    getState: () => ({ openBrowser: vi.fn() }),
-  },
+vi.mock("~/browser/previewRuntime", () => ({
+  isPreviewAvailableFor: () => true,
+  previewRuntimeFor: () => undefined,
 }));
 
 const browserDefaultsMocks = vi.hoisted(() => ({
@@ -48,6 +44,8 @@ const threadRef = {
 };
 
 beforeEach(() => {
+  resetPreviewStateForTests();
+  useRightPanelStore.setState({ byThreadKey: {} });
   browserDefaultsMocks.resolve.mockReset();
   browserDefaultsMocks.resolve.mockResolvedValue(hydratedDefaults);
   linkTargetMocks.preference.mockReturnValue("app");
@@ -58,6 +56,38 @@ afterEach(() => {
 });
 
 describe("openTerminalLinkInPreview", () => {
+  it("opens a fork's terminal link in the shared browser session", async () => {
+    const forkRef = { ...threadRef, threadId: "fork" as ScopedThreadRef["threadId"] };
+    useRightPanelStore.getState().sharePanel(forkRef, threadRef);
+    const snapshot: PreviewSessionSnapshot = {
+      threadId: threadRef.threadId,
+      tabId: "tab-1",
+      navStatus: { _tag: "Success", url: "http://localhost:5173/", title: "App" },
+      canGoBack: false,
+      canGoForward: false,
+      updatedAt: "2026-11-16T00:00:00.000Z",
+    };
+    await openTerminalLinkInPreview({
+      url: "http://localhost:5173/",
+      threadRef: forkRef,
+      openPreview: async ({ input }) =>
+        input.threadId === snapshot.threadId
+          ? AsyncResult.success(snapshot)
+          : AsyncResult.failure(Cause.fail(new Error("Wrong session owner"))),
+      fallbackToBrowser: () => {
+        throw new Error("Unexpected external browser");
+      },
+      forceBrowser: false,
+    });
+    expect(readThreadPreviewState(threadRef).sessions[snapshot.tabId]).toEqual(snapshot);
+    expect(readThreadPreviewState(forkRef).sessions).toEqual({});
+    const panels = useRightPanelStore.getState().byThreadKey;
+    expect(selectThreadRightPanelState(panels, forkRef)).toBe(
+      selectThreadRightPanelState(panels, threadRef),
+    );
+    expect(selectThreadRightPanelState(panels, forkRef).activeSurfaceId).toBe("browser:tab-1");
+  });
+
   it("does not report or fall back when opening the preview is interrupted", async () => {
     const fallbackToBrowser = vi.fn();
     const reportError = vi.spyOn(console, "error").mockImplementation(() => undefined);

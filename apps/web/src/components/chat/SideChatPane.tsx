@@ -40,15 +40,18 @@ export default function SideChatPane(props: {
   readonly parentPanel: SideChatParentPanel;
   readonly onClose: () => void;
 }) {
-  const { parentRef, threadId } = props;
+  const { threadId } = props;
   const gt = useGT();
-  const threadRef = scopeThreadRef(parentRef.environmentId, threadId);
+  const threadRef = scopeThreadRef(props.parentRef.environmentId, threadId);
+  const shell = useQuietThreadShell(threadRef);
+  const parentRef = shell?.lineage.parentThreadId
+    ? scopeThreadRef(props.parentRef.environmentId, shell.lineage.parentThreadId)
+    : props.parentRef;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- registers the parent panel as host in the panel store
   useEffect(
-    () => hostRightPanel(scopeThreadRef(parentRef.environmentId, threadId), parentRef),
-    [parentRef, threadId],
+    () => hostRightPanel(scopeThreadRef(props.parentRef.environmentId, threadId), props.parentRef),
+    [props.parentRef, threadId],
   );
-  const shell = useQuietThreadShell(threadRef);
   const parent = useQuietThreadShell(parentRef);
   const snapshotLoaded = useEnvironmentShellHasSnapshot(parentRef.environmentId);
   const projection = useQuietThreadProjection(shell === null ? null : threadRef)?.projection;

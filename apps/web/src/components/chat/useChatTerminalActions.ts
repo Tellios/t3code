@@ -28,6 +28,8 @@ import {
 import { MAX_TERMINALS_PER_GROUP } from "../../types";
 import {
   selectThreadRightPanelState,
+  sharedRightPanelRef,
+  panelSurfaceThreadRef,
   type RightPanelSurface,
   useRightPanelStore,
 } from "../../rightPanelStore";
@@ -122,6 +124,13 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
   const storeNewTerminal = useTerminalUiStateStore((s) => s.newTerminal);
   const storeCloseTerminal = useTerminalUiStateStore((s) => s.closeTerminal);
   const terminalActions = useThreadTerminalActions(activeThreadRef);
+  const panelThreadRef = activeThreadRef ? sharedRightPanelRef(activeThreadRef) : null;
+  const panelTerminalActions = useThreadTerminalActions(panelThreadRef);
+  const activePanelTerminalRef =
+    activeThreadRef && activeRightPanelSurface?.kind === "terminal"
+      ? panelSurfaceThreadRef(activeThreadRef, activeRightPanelSurface)
+      : panelThreadRef;
+  const activePanelTerminalActions = useThreadTerminalActions(activePanelTerminalRef);
 
   const activeTerminalGroup =
     terminalUiState.terminalGroups.find(
@@ -337,33 +346,32 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
   };
   const runShellCommandStable = useStableCallback(runShellCommand);
   const addTerminalSurface = () => {
-    if (!activeThreadRef) return;
-    const launched = terminalActions.launchTerminal({
-      place: (terminalId) =>
-        useRightPanelStore.getState().openTerminal(activeThreadRef, terminalId),
+    if (!panelThreadRef) return;
+    const launched = panelTerminalActions.launchTerminal({
+      place: (terminalId) => useRightPanelStore.getState().openTerminal(panelThreadRef, terminalId),
     });
     if (!launched) return;
-    focusTerminal(activeThreadRef, launched.terminalId);
+    focusTerminal(panelThreadRef, launched.terminalId);
     void launched.result;
   };
   const addTerminalSurfaceStable = useStableCallback(addTerminalSurface);
   const splitPanelTerminal = (direction: "horizontal" | "vertical" = "horizontal") => {
     if (
-      !activeThreadRef ||
+      !panelThreadRef ||
       activeRightPanelSurface?.kind !== "terminal" ||
       activeRightPanelSurface.terminalIds.length >= MAX_TERMINALS_PER_GROUP
     ) {
       return;
     }
     const surfaceId = activeRightPanelSurface.id;
-    const launched = terminalActions.launchTerminal({
+    const launched = activePanelTerminalActions.launchTerminal({
       place: (terminalId) =>
         useRightPanelStore
           .getState()
-          .splitTerminal(activeThreadRef, surfaceId, terminalId, direction),
+          .splitTerminal(panelThreadRef, surfaceId, terminalId, direction),
     });
     if (!launched) return;
-    focusTerminal(activeThreadRef, launched.terminalId);
+    if (activePanelTerminalRef) focusTerminal(activePanelTerminalRef, launched.terminalId);
     void launched.result;
   };
   const splitPanelTerminalStable = useStableCallback(splitPanelTerminal);
@@ -376,18 +384,22 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
     useRightPanelStore
       .getState()
       .activateTerminal(activeThreadRef, activeRightPanelSurface.id, terminalId);
-    focusTerminal(activeThreadRef, terminalId);
+    focusTerminal(panelSurfaceThreadRef(activeThreadRef, activeRightPanelSurface), terminalId);
   };
   const activatePanelTerminalStable = useStableCallback(activatePanelTerminal);
-  const closePanelTerminal = (terminalId: string, target = activeThreadRef) => {
+  const closePanelTerminal = (terminalId: string, target = activePanelTerminalRef) => {
     if (!target || !readEnvironmentScope(target.environmentId, AuthTerminalOperateScope)) return;
     const store = useRightPanelStore.getState();
     const surface = selectThreadRightPanelState(store.byThreadKey, target).surfaces.find(
-      (entry) => entry.kind === "terminal" && entry.terminalIds.includes(terminalId),
+      (entry) =>
+        entry.kind === "terminal" &&
+        entry.terminalIds.includes(terminalId) &&
+        panelSurfaceThreadRef(target, entry).threadId === target.threadId,
     );
     if (!surface) return;
-    terminalActions.closeTerminalSession(terminalId, target);
-    storeCloseTerminal(target, terminalId);
+    const owner = panelSurfaceThreadRef(target, surface);
+    panelTerminalActions.closeTerminalSession(terminalId, owner);
+    storeCloseTerminal(owner, terminalId);
     store.closeTerminal(target, surface.id, terminalId);
     focusActivePanelTerminal(target);
   };

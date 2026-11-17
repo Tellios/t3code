@@ -9,6 +9,8 @@ import {
   migratePersistedRightPanelState,
   pullRequestSurface,
   pullRequestSurfaceId,
+  sharedRightPanelRef,
+  panelSurfaceThreadRef,
   selectActiveRightPanel,
   selectActiveRightPanelSurface,
   selectThreadPanelVisibility,
@@ -40,6 +42,103 @@ async function reloadRightPanelStore() {
 }
 
 describe("rightPanelStore", () => {
+  it("merges saved fork tabs without changing their live session owners", async () => {
+    const store = useRightPanelStore.getState();
+    store.openFile(refA, "source.ts");
+    store.openTerminal(refA, "term-1");
+    store.openFile(refB, "fork.ts");
+    store.openBrowser(refB, "fork-browser");
+    store.openTerminal(refB, "term-1");
+    store.sharePanel(refB, refA);
+    const read = () => selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refB);
+    expect(read().surfaces).toHaveLength(5);
+    const terminals = read().surfaces.filter((surface) => surface.kind === "terminal");
+    expect(terminals).toHaveLength(2);
+    expect(new Set(terminals.map((surface) => surface.id)).size).toBe(2);
+    expect(terminals.map((surface) => panelSurfaceThreadRef(refA, surface))).toEqual([refA, refB]);
+    store.reconcileBrowserSurfaces(refA, []);
+    expect(read().surfaces.some((surface) => surface.id === "browser:fork-browser")).toBe(true);
+    await reloadRightPanelStore();
+    expect(read().surfaces).toHaveLength(5);
+    expect(read().surfaces.filter((surface) => surface.kind === "terminal")).toEqual(terminals);
+    store.sharePanel(refB, refA);
+    expect(read().surfaces).toHaveLength(5);
+  });
+
+  it("shares live surfaces and changes in both directions across forks and reloads", async () => {
+    const store = useRightPanelStore.getState();
+    store.openFile(refA, "src/app.ts");
+    store.openBrowser(refA, "live-browser");
+    store.openTerminal(refA, "live-terminal");
+    store.sharePanel(refB, refA);
+    const read = (ref: typeof refA) =>
+      selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, ref);
+    expect(read(refB)).toBe(read(refA));
+    expect(sharedRightPanelRef(refB)).toEqual(refA);
+    expect(sharedRightPanelRef(refB)).toBe(sharedRightPanelRef(refB));
+    store.open(refB, "diff");
+    store.moveSurface(refB, "diff", 0);
+    store.splitTerminal(refB, "terminal:live-terminal", "split-terminal");
+    expect(read(refA).surfaces[0]?.id).toBe("diff");
+    expect(read(refA)).toBe(read(refB));
+    await reloadRightPanelStore();
+    expect(sharedRightPanelRef(refB)).toEqual(refA);
+    expect(read(refB)).toBe(read(refA));
+    store.closeSurface(refB, "browser:live-browser");
+    expect(read(refA).surfaces.some((surface) => surface.kind === "preview")).toBe(false);
+    store.openBrowser(refA, "next-browser");
+    expect(read(refB).activeSurfaceId).toBe("browser:next-browser");
+    store.reconcileBrowserSurfaces(refA, []);
+    expect(read(refA).surfaces.some((surface) => surface.kind === "preview")).toBe(false);
+  });
+
+  it("keeps nested forks in one panel without linking unrelated environments", () => {
+    const store = useRightPanelStore.getState();
+    const nested = scopeThreadRef(refA.environmentId, ThreadId.make("nested"));
+    const remote = scopeThreadRef("env-2" as EnvironmentId, refA.threadId);
+    store.sharePanel(refB, refA);
+    store.sharePanel(nested, refB);
+    store.sharePanel(remote, refA);
+    store.open(nested, "files");
+    expect(sharedRightPanelRef(nested)).toEqual(refA);
+    expect(sharedRightPanelRef(remote)).toEqual(remote);
+    store.removeThread(refB);
+    expect(sharedRightPanelRef(nested)).toEqual(refA);
+    store.removeThread(refA);
+    expect(
+      selectActiveRightPanelSurface(useRightPanelStore.getState().byThreadKey, nested)?.id,
+    ).toBe("files");
+    store.closeAllSurfaces(refA);
+    store.openFile(nested, "new.ts");
+    expect(selectActiveRightPanelSurface(useRightPanelStore.getState().byThreadKey, refA)?.id).toBe(
+      "file:new.ts",
+    );
+  });
+
+  it("reconciles each shared thread's browser sessions without removing the others", () => {
+    const store = useRightPanelStore.getState();
+    store.openBrowser(refA, "source-browser");
+    store.sharePanel(refB, refA);
+    store.reconcileBrowserSurfaces(refB, ["fork-browser"]);
+    const read = () => selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA);
+    expect(read().surfaces.map((surface) => surface.id)).toEqual([
+      "browser:source-browser",
+      "browser:fork-browser",
+    ]);
+    expect(read().surfaces[1]).toMatchObject({ ownerThreadId: refB.threadId });
+    expect(panelSurfaceThreadRef(refA, read().surfaces[1]!)).toEqual(refB);
+    store.reconcileBrowserSurfaces(refA, []);
+    expect(read().surfaces.map((surface) => surface.id)).toEqual(["browser:fork-browser"]);
+    store.reconcileBrowserSurfaces(refB, []);
+    expect(read().surfaces).toEqual([]);
+    store.openDevice(
+      refB,
+      { hostId: "host", deviceId: "device", platform: "ios", name: "iPhone" },
+      true,
+    );
+    expect(panelSurfaceThreadRef(refA, read().surfaces[0]!)).toEqual(refB);
+  });
+
   it("opens a hosted side chat's panel actions in its parent's panel until unhosted", () => {
     const store = useRightPanelStore.getState();
     const unhost = hostRightPanel(refB, refA);

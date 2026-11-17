@@ -117,7 +117,7 @@ export class VcsActionRemoteFailureError extends Schema.TaggedError<VcsActionRem
     environmentId: EnvironmentId,
     cwd: Schema.String,
     phase: Schema.NullOr(GitActionProgressPhase),
-    remoteMessageLength: Schema.Number,
+    remoteMessage: Schema.String,
   },
 ) {
   override get message(): string {
@@ -125,7 +125,7 @@ export class VcsActionRemoteFailureError extends Schema.TaggedError<VcsActionRem
   }
 
   get i18nMessage(): MarkedText {
-    return [
+    const failure =
       this.phase === null
         ? msg("Source control action ''{action}'' failed during execution.", {
             action: this.action,
@@ -133,8 +133,9 @@ export class VcsActionRemoteFailureError extends Schema.TaggedError<VcsActionRem
         : msg("Source control action ''{action}'' failed during {phase}.", {
             action: this.action,
             phase: this.phase,
-          }),
-    ];
+          });
+    // The server's message stays verbatim; only the framing is translated.
+    return this.remoteMessage.trim() ? [failure, this.remoteMessage] : [failure];
   }
 }
 
@@ -349,6 +350,9 @@ export function consumeVcsActionProgress<E, R>(
         }
         return input.onProgress(normalized);
       }),
+      Effect.catch((error) =>
+        terminalEvent?.kind === "action_failed" ? Effect.void : Effect.fail(error),
+      ),
       Effect.flatMap(() => {
         if (terminalEvent?.kind === "action_finished") {
           return Effect.succeed(terminalEvent.result);
@@ -362,7 +366,7 @@ export function consumeVcsActionProgress<E, R>(
               environmentId: input.target.environmentId,
               cwd: input.target.cwd,
               phase: terminalEvent.phase,
-              remoteMessageLength: terminalEvent.message.length,
+              remoteMessage: terminalEvent.message,
             }),
           );
         }

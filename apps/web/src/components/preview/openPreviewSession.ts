@@ -16,6 +16,7 @@ import { resolveBrowserDefaults } from "~/browser/browserDefaults";
 import { BrowserSettingsReadError, isBrowserSettingsReadError } from "~/browser/openFileInPreview";
 import { previewRuntimeFor } from "~/browser/previewRuntime";
 import { applyPreviewServerSnapshot, rememberPreviewUrl } from "~/previewStateStore";
+import { rightPanelHostRef } from "~/rightPanelStore";
 
 interface OpenPreviewSessionInput<E> {
   openPreview: (input: {
@@ -34,6 +35,7 @@ interface OpenPreviewSessionInput<E> {
 export async function openPreviewSession<E>(
   input: OpenPreviewSessionInput<E>,
 ): Promise<AtomCommandResult<PreviewSessionSnapshot, E | BrowserSettingsReadError>> {
+  input = { ...input, threadRef: rightPanelHostRef(input.threadRef) };
   // Wait for settings hydration so new tabs cannot retain uncorrected schema defaults.
   const defaults = await resolveBrowserDefaults().catch(
     (cause: unknown) => new BrowserSettingsReadError({ cause }),

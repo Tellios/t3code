@@ -18,6 +18,7 @@ import { useDiffPanelStore } from "../../diffPanelStore";
 import { type ThreadPanelPresentation } from "../../rightPanelLayout";
 import {
   selectThreadPanelOpen,
+  panelSurfaceThreadRef,
   type RightPanelSurface,
   useRightPanelStore,
 } from "../../rightPanelStore";
@@ -170,10 +171,13 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
       if (activeRightPanelSurface?.kind === "preview" && activeRightPanelSurface.resourceId) {
         usePreviewMiniPlayerStore
           .getState()
-          .open(activeThreadRef, browserMiniPlayerSource(activeRightPanelSurface.resourceId));
+          .open(
+            panelSurfaceThreadRef(activeThreadRef, activeRightPanelSurface),
+            browserMiniPlayerSource(activeRightPanelSurface.resourceId),
+          );
       } else if (activeRightPanelSurface?.kind === "device" && activeRightPanelSurface.target) {
         floatDeviceSurface(
-          activeThreadRef,
+          panelSurfaceThreadRef(activeThreadRef, activeRightPanelSurface),
           { kind: "device", ...activeRightPanelSurface.target },
           deviceStateLoaded ? deviceState : null,
         );
@@ -192,7 +196,13 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
     if (!canOperatePreview) return;
     const activeTabId = activePreviewState.activeTabId;
     if (activeTabId) {
-      useRightPanelStore.getState().openBrowser(activeThreadRef, activeTabId);
+      useRightPanelStore
+        .getState()
+        .openBrowser(
+          activeThreadRef,
+          activeTabId,
+          activePreviewState.sessions[activeTabId]?.threadId,
+        );
     } else {
       createBrowserSurface();
     }
@@ -202,10 +212,10 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
     if (!activeThreadRef) return;
     useRightPanelStore.getState().activateSurface(activeThreadRef, surface.id);
     if (surface.kind === "preview" && surface.resourceId) {
-      setActivePreviewTab(activeThreadRef, surface.resourceId);
+      setActivePreviewTab(panelSurfaceThreadRef(activeThreadRef, surface), surface.resourceId);
     }
     if (surface.kind === "terminal") {
-      focusTerminal(activeThreadRef, surface.activeTerminalId);
+      focusTerminal(panelSurfaceThreadRef(activeThreadRef, surface), surface.activeTerminalId);
     }
     if (surface.kind === "side-chat") {
       requestWorkspaceFocus({

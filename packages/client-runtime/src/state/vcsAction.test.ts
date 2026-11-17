@@ -299,44 +299,44 @@ describe("vcsActionState", () => {
     }),
   );
 
-  it.effect("retains structural remote failure context without copying the remote payload", () =>
+  it.effect("preserves the server failure message for display", () =>
     Effect.gen(function* () {
       const target = { environmentId, cwd };
       const transportActionId = createVcsActionTransportId(target, actionId);
-      const remoteMessage = "The remote rejected the push with credential=do-not-log.";
-      const error = yield* consumeVcsActionProgress(
-        Stream.fromIterable<GitActionProgressEvent>([
-          {
-            actionId: transportActionId,
-            action,
-            cwd,
-            kind: "action_failed",
-            phase: "push",
-            message: remoteMessage,
-          },
-        ]),
+      const remoteMessage = "The current branch has not been pushed. Push before creating a PR.";
+      const events = Stream.fromIterable<GitActionProgressEvent>([
         {
+          actionId: transportActionId,
+          action,
+          cwd,
+          kind: "action_failed",
+          phase: "push",
+          message: remoteMessage,
+        },
+      ]);
+      for (const stream of [events, Stream.concat(events, Stream.fail(new Error("RPC failed")))]) {
+        const error = yield* consumeVcsActionProgress(stream, {
           target,
           transportActionId,
           actionId,
           action,
           onProgress: () => Effect.void,
-        },
-      ).pipe(Effect.flip);
+        }).pipe(Effect.flip);
 
-      expect(error).toBeInstanceOf(VcsActionRemoteFailureError);
-      expect(error).toMatchObject({
-        actionId,
-        transportActionId,
-        action,
-        environmentId,
-        cwd,
-        phase: "push",
-        remoteMessageLength: remoteMessage.length,
-      });
-      expect(error).not.toHaveProperty("detail");
-      expect(error.message).toBe("Source control action 'commit_push' failed during push.");
-      expect(error.message).not.toContain(remoteMessage);
+        expect(error).toBeInstanceOf(VcsActionRemoteFailureError);
+        expect(error).toMatchObject({
+          actionId,
+          transportActionId,
+          action,
+          environmentId,
+          cwd,
+          phase: "push",
+          remoteMessage,
+        });
+        expect(error.message).toBe(
+          `Source control action 'commit_push' failed during push. ${remoteMessage}`,
+        );
+      }
     }),
   );
 
@@ -375,6 +375,15 @@ describe("vcsActionState", () => {
       expect(error.message).toBe(
         "Source control action 'commit_push' ended without a terminal result.",
       );
+      const transportError = new Error("Disconnected before any progress arrived");
+      const failure = yield* consumeVcsActionProgress(Stream.fail(transportError), {
+        target,
+        transportActionId,
+        actionId,
+        action,
+        onProgress: () => Effect.void,
+      }).pipe(Effect.flip);
+      expect(failure).toBe(transportError);
     }),
   );
 
@@ -549,7 +558,8 @@ describe("vcsActionState", () => {
         isRunning: false,
         operation: "run_change_request",
         actionId: failedActionId,
-        error: "Source control action 'commit_push' failed during push.",
+        error:
+          "Source control action 'commit_push' failed during push. push failed after creating the branch",
       });
       expect(registry.get(state).revision).toBe(2);
       expect(removed).toEqual([`${environmentId}:*`, `${environmentId}:*`]);

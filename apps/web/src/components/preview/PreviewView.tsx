@@ -493,7 +493,7 @@ export function PreviewView({
       });
       return;
     }
-    useRightPanelStore.getState().openBrowser(threadRef, result.value.tabId);
+    useRightPanelStore.getState().openBrowser(threadRef, result.value.tabId, result.value.threadId);
     await closePreviewSession({ closePreview, snapshot, tabId, threadRef });
   };
 

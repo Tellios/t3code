@@ -124,11 +124,19 @@ describe("openPreviewSession", () => {
 });
 
 describe("openUrlInPreview from a link", () => {
-  it.each(["link", "file"] as const)(
-    "opens a side chat's %s in the parent's browser panel after the pane unmounts",
-    async (entryPoint) => {
+  it.each([
+    ["link", "side-chat"],
+    ["file", "side-chat"],
+    ["link", "fork"],
+    ["file", "fork"],
+    ["session", "fork"],
+  ] as const)(
+    "opens a %s from a %s in the parent's browser panel",
+    async (entryPoint, relationship) => {
       const sideChatRef = { ...threadRef, threadId: "side-chat" as ScopedThreadRef["threadId"] };
-      const unhost = hostRightPanel(sideChatRef, threadRef);
+      const unhost =
+        relationship === "side-chat" ? hostRightPanel(sideChatRef, threadRef) : () => {};
+      if (relationship === "fork") useRightPanelStore.getState().sharePanel(sideChatRef, threadRef);
       const openPreview = vi.fn(async () => AsyncResult.success(snapshot));
       vi.spyOn(previewRuntime, "isPreviewAvailableFor").mockReturnValue(true);
       vi.spyOn(browserDefaults, "resolveBrowserDefaults").mockImplementation(async () => {
@@ -136,7 +144,9 @@ describe("openUrlInPreview from a link", () => {
         return browserDefaults.getBrowserDefaults();
       });
 
-      if (entryPoint === "link") {
+      if (entryPoint === "session") {
+        await openPreviewSession({ openPreview, threadRef: sideChatRef });
+      } else if (entryPoint === "link") {
         await openUrlInPreview({ openPreview, threadRef: sideChatRef, url: "https://t3.chat/" });
       } else {
         await openFileInPreview({
@@ -159,9 +169,11 @@ describe("openUrlInPreview from a link", () => {
       );
       expect(readThreadPreviewState(threadRef).activeTabId).toBe(snapshot.tabId);
       expect(readThreadPreviewState(sideChatRef).sessions).toEqual({});
-      expect(
-        selectActiveRightPanelSurface(useRightPanelStore.getState().byThreadKey, threadRef)?.kind,
-      ).toBe("preview");
+      if (entryPoint !== "session") {
+        expect(
+          selectActiveRightPanelSurface(useRightPanelStore.getState().byThreadKey, threadRef)?.kind,
+        ).toBe("preview");
+      }
     },
   );
 

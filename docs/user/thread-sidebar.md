@@ -22,6 +22,12 @@ a connected one if any is connected.
 When you change a new thread's project, T3 Code stays in the current environment
 if that project exists there. Otherwise it selects an environment that has it.
 
+To try a different direction from an existing conversation, fork from an assistant
+response. On web and desktop, the fork shares all panel tabs with its source on
+that client, including live browser, terminal, and device sessions. Opening,
+reordering, or closing a tab affects both threads. The shared tabs survive reloads. Existing forks share tabs when you reopen the app;
+tabs already open in either thread are combined.
+
 ### Start without a project
 
 A thread does not need a project. To start one without a project, click **or

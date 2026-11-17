@@ -13,7 +13,7 @@ export function showPreviewPopup(
     if (from === "floating") {
       usePreviewMiniPlayerStore.getState().open(threadRef, browserMiniPlayerSource(popupTabId));
     } else {
-      useRightPanelStore.getState().openBrowser(threadRef, popupTabId);
+      useRightPanelStore.getState().openBrowser(threadRef, popupTabId, threadRef.threadId);
     }
   });
 }

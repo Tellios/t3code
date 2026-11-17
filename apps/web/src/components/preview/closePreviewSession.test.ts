@@ -16,6 +16,7 @@ import {
 import { useClosedViewStore } from "~/closedViewStore";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { primaryEnvironmentIdAtom } from "~/state/primaryEnvironment";
+import { useRightPanelStore } from "~/rightPanelStore";
 
 import { closePreviewSession } from "./closePreviewSession";
 
@@ -57,38 +58,63 @@ beforeEach(() => {
   resetPreviewStateForTests();
   setPrimaryEnvironment(null);
   useClosedViewStore.setState({ entries: [] });
+  useRightPanelStore.setState({ byThreadKey: {} });
 });
 
 describe("closePreviewSession", () => {
-  it("suppresses stale server snapshots while the close is in flight", async () => {
+  it("closes a fork-owned browser without suppressing the source's session", async () => {
+    const forkRef = { ...threadRef, threadId: "fork" as ScopedThreadRef["threadId"] };
+    useRightPanelStore.getState().sharePanel(forkRef, threadRef);
+    const forkSnapshot = { ...snapshot, threadId: forkRef.threadId, tabId: "fork-browser" };
     applyPreviewServerSnapshot(threadRef, snapshot);
-    let finishClose: (() => void) | undefined;
-    const closePreview = vi.fn(
-      (_input: PreviewCloseInput) =>
-        new Promise<ReturnType<typeof AsyncResult.success<void>>>((resolve) => {
-          finishClose = () => resolve(AsyncResult.success(undefined));
-        }),
-    );
-
-    const closing = closePreviewSession({
-      closePreview: ({ input }) => closePreview(input),
-      snapshot,
-      tabId: snapshot.tabId,
-      threadRef,
+    applyPreviewServerSnapshot(forkRef, forkSnapshot);
+    await closePreviewSession({
+      closePreview: async () => AsyncResult.success(undefined),
+      snapshot: forkSnapshot,
+      tabId: forkSnapshot.tabId,
+      threadRef: forkRef,
     });
-
-    expect(useClosedViewStore.getState().entries).toEqual([]);
-    expect(readThreadPreviewState(threadRef).sessions).toEqual({});
-    applyPreviewServerSnapshot(threadRef, snapshot);
-    expect(readThreadPreviewState(threadRef).sessions).toEqual({});
-
-    finishClose?.();
-    await closing;
+    expect(readThreadPreviewState(forkRef).sessions).toEqual({});
+    expect(readThreadPreviewState(threadRef).sessions[snapshot.tabId]).toEqual(snapshot);
     expect(useClosedViewStore.getState().entries).toMatchObject([
-      { kind: "browser", threadRef, snapshot },
+      { kind: "browser", threadRef: forkRef, snapshot: forkSnapshot },
     ]);
-    expect(closePreview).toHaveBeenCalledWith({ threadId: "thread-1", tabId: "tab-1" });
   });
+
+  it.each([false, true])(
+    "suppresses stale server snapshots while the close is in flight, fork=%s",
+    async (fork) => {
+      const target = { ...threadRef, threadId: "fork" as ScopedThreadRef["threadId"] };
+      if (fork) useRightPanelStore.getState().sharePanel(target, threadRef);
+      applyPreviewServerSnapshot(threadRef, snapshot);
+      let finishClose: (() => void) | undefined;
+      const closePreview = vi.fn(
+        (_input: PreviewCloseInput) =>
+          new Promise<ReturnType<typeof AsyncResult.success<void>>>((resolve) => {
+            finishClose = () => resolve(AsyncResult.success(undefined));
+          }),
+      );
+
+      const closing = closePreviewSession({
+        closePreview: ({ input }) => closePreview(input),
+        snapshot,
+        tabId: snapshot.tabId,
+        threadRef: fork ? target : threadRef,
+      });
+
+      expect(useClosedViewStore.getState().entries).toEqual([]);
+      expect(readThreadPreviewState(threadRef).sessions).toEqual({});
+      applyPreviewServerSnapshot(threadRef, snapshot);
+      expect(readThreadPreviewState(threadRef).sessions).toEqual({});
+
+      finishClose?.();
+      await closing;
+      expect(useClosedViewStore.getState().entries).toMatchObject([
+        { kind: "browser", threadRef, snapshot },
+      ]);
+      expect(closePreview).toHaveBeenCalledWith({ threadId: "thread-1", tabId: "tab-1" });
+    },
+  );
 
   it("keeps a tab this desktop renders mounted until the server has closed it", async () => {
     setPrimaryEnvironment(threadRef.environmentId);

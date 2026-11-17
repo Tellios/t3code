@@ -29,6 +29,9 @@ vi.mock("../state/primaryEnvironment", async () => {
   const { Atom } = await import("effect/reactivity");
   return { primaryEnvironmentIdAtom: Atom.make(null) };
 });
+vi.mock("./useSharedPanelPreviews", () => ({
+  useSharedPanelPreviews: () => ({ previewState: { sessions: {}, desktopByTabId: {} } }),
+}));
 vi.mock("../state/session", () => ({
   useEnvironmentScope: (id: string) => fixture.allowed.has(id),
   readEnvironmentScope: (id: string) => fixture.allowed.has(id),
@@ -108,16 +111,19 @@ function setup(mode: "single" | "all") {
 }
 
 it.each([
-  { mode: "single", failClose: false },
-  { mode: "single", failClose: true },
-  { mode: "all", failClose: false },
-  { mode: "all", failClose: true },
-] as const)(
-  "keeps a pending $mode close on its original environment and thread, fallback=$failClose",
-  async ({ mode, failClose }) => {
+  ...(["single", "all"] as const).flatMap((mode) =>
+    [false, true].flatMap((failClose) =>
+      [false, true].map((fork) => ({ mode, failClose, fork })),
+    ),
+  ),
+])(
+  "keeps a pending $mode close on its original environment and thread, fallback=$failClose, fork=$fork",
+  async ({ mode, failClose, fork }) => {
     const { original, other, Harness, resolve } = setup(mode);
+    const target = { ...original, threadId: ThreadId.make("fork") };
+    if (fork) useRightPanelStore.getState().sharePanel(target, original);
     fixture.failClose = failClose;
-    await using screen = await render(<Harness threadRef={original} />);
+    await using screen = await render(<Harness threadRef={fork ? target : original} />);
     await screen.getByRole("button").click();
     expect(fixture.sessions.size).toBe(2);
     await screen.rerender(<Harness threadRef={other} />);
@@ -156,3 +162,35 @@ it.each([
     ).toHaveLength(1);
   },
 );
+
+it("closes a restored fork terminal under its owner when the source has the same terminal id", async () => {
+  const { original } = setup("single");
+  const fork = { ...original, threadId: ThreadId.make("saved-fork") };
+  fixture.confirm = () => Promise.resolve(true);
+  fixture.sessions.set(`${fork.environmentId}/${fork.threadId}/term-1`, "fork history");
+  const store = useRightPanelStore.getState();
+  store.openTerminal(fork, "term-1");
+  store.sharePanel(fork, original);
+  const surface = selectThreadRightPanelState(
+    useRightPanelStore.getState().byThreadKey,
+    original,
+  ).surfaces.find(
+    (surface) => surface.kind === "terminal" && surface.ownerThreadId === fork.threadId,
+  )!;
+  function Harness() {
+    const { closeSurface } = useRightPanelSurfaceClose({
+      threadRef: original,
+      terminalLabelsById: new Map(),
+    });
+    return <button onClick={() => closeSurface(surface)}>Close fork terminal</button>;
+  }
+  await using screen = await render(<Harness />);
+  await screen.getByRole("button").click();
+  await vi.waitFor(() => {
+    expect(fixture.sessions.has(`${fork.environmentId}/${fork.threadId}/term-1`)).toBe(false);
+  });
+  expect(fixture.sessions.has(`${original.environmentId}/${original.threadId}/term-1`)).toBe(true);
+  expect(
+    selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, fork).surfaces,
+  ).toHaveLength(1);
+});
