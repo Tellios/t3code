@@ -752,6 +752,7 @@ it.effect("resolves a restored icon immediately after reselecting its saved path
     const iconPath = `${cwd}/icon.svg`;
     const metadata = Layer.merge(
       Layer.succeed(RepositoryIdentityResolver.RepositoryIdentityResolver, {
+        resolveAll: () => Effect.succeed([]),
         resolve: () => Effect.succeed(null),
       }),
       ProjectFaviconResolver.layer.pipe(

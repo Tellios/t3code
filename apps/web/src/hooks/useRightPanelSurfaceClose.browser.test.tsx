@@ -110,13 +110,11 @@ function setup(mode: "single" | "all") {
   return { original, other, Harness, resolve };
 }
 
-it.each([
-  ...(["single", "all"] as const).flatMap((mode) =>
-    [false, true].flatMap((failClose) =>
-      [false, true].map((fork) => ({ mode, failClose, fork })),
-    ),
+it.each(
+  (["single", "all"] as const).flatMap((mode) =>
+    [false, true].flatMap((failClose) => [false, true].map((fork) => ({ mode, failClose, fork }))),
   ),
-])(
+)(
   "keeps a pending $mode close on its original environment and thread, fallback=$failClose, fork=$fork",
   async ({ mode, failClose, fork }) => {
     const { original, other, Harness, resolve } = setup(mode);
