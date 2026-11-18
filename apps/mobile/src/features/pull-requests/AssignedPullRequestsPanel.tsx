@@ -6,6 +6,7 @@ import {
 } from "@t3tools/client-runtime/state/pull-requests";
 import { AuthOrchestrationOperateScope, AuthSourceControlWriteScope } from "@t3tools/contracts";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
+import { T, useGT, Var } from "gt-react-native";
 import { useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import { Linking, Pressable, View } from "react-native";
@@ -33,6 +34,7 @@ import type { EnvironmentPullRequestListEntry } from "./pullRequestList";
 import type { MenuProps } from "../../components/ui/Menu.types";
 
 export function AssignedPullRequestsPanel() {
+  const gt = useGT();
   const targets = assignedPullRequestTargets(useProjects(), useServerConfigs());
   const list = usePullRequestList(targets);
   const [expanded, setExpanded] = useState(true);
@@ -58,8 +60,9 @@ export function AssignedPullRequestsPanel() {
         className="flex-row items-center gap-2 px-2 py-3"
       >
         <Text className="flex-1 text-xs text-muted-foreground">
-          Pull Requests · {entries.length}
-          {list.hasMore ? "+" : ""}
+          <T>
+            Pull Requests · <Var>{`${entries.length}${list.hasMore ? "+" : ""}`}</Var>
+          </T>
         </Text>
         <SymbolView
           name={expanded ? "chevron.down" : "chevron.right"}
@@ -70,18 +73,22 @@ export function AssignedPullRequestsPanel() {
       {expanded ? (
         <View>
           {list.isPending ? (
-            <Text className="px-2 py-2 text-xs text-muted-foreground">Loading pull requests…</Text>
+            <Text className="px-2 py-2 text-xs text-muted-foreground">
+              <T>Loading pull requests…</T>
+            </Text>
           ) : null}
           {list.data.errors.length > 0 ? (
             <Pressable onPress={list.onRefresh} accessibilityRole="button">
               <Text className="px-2 py-2 text-xs text-destructive">
-                {list.data.errors.map((error) => error.message).join(" ")} Tap to retry.
+                {gt("{errors} Tap to retry.", {
+                  errors: list.data.errors.map((error) => error.message).join(" "),
+                })}
               </Text>
             </Pressable>
           ) : null}
           {!list.isPending && !entries.length && !list.data.errors.length ? (
             <Text className="px-2 py-2 text-xs text-muted-foreground">
-              No open PRs assigned to you.
+              <T>No open PRs assigned to you.</T>
             </Text>
           ) : null}
           {entries.slice(0, visibleCount).map((entry) => (
@@ -93,7 +100,9 @@ export function AssignedPullRequestsPanel() {
             />
           ))}
           <Pressable accessibilityRole="button" onPress={list.onRefresh} disabled={list.refreshing}>
-            <Text className="px-2 py-2 text-xs text-muted-foreground">Refresh</Text>
+            <Text className="px-2 py-2 text-xs text-muted-foreground">
+              <T>Refresh</T>
+            </Text>
           </Pressable>
           {entries.length > visibleCount || list.hasMore ? (
             <Pressable
@@ -103,7 +112,9 @@ export function AssignedPullRequestsPanel() {
                 if (entries.length <= visibleCount) list.loadMore();
               }}
             >
-              <Text className="px-2 py-2 text-xs text-primary">Show more</Text>
+              <Text className="px-2 py-2 text-xs text-primary">
+                <T>Show more</T>
+              </Text>
             </Pressable>
           ) : null}
         </View>
@@ -121,6 +132,7 @@ function AssignedPullRequestRow({
   select: (entry: EnvironmentPullRequestListEntry, action: string) => void;
   busy: boolean;
 }) {
+  const gt = useGT();
   const [preparing, setPreparing] = useState(false);
   const projects = assignedPullRequestProjects(entry, useProjects(), useServerConfigs());
   const target = {
@@ -140,7 +152,10 @@ function AssignedPullRequestRow({
     const result = await readChecks(target);
     if (result._tag === "Failure") {
       const error = squashAtomCommandFailure(result);
-      Dialog.alert("Couldn't load CI logs", error instanceof Error ? error.message : "Try again.");
+      Dialog.alert(
+        gt("Couldn't load CI logs"),
+        error instanceof Error ? error.message : gt("Try again."),
+      );
       return;
     }
     const checks = (result.value?.checks ?? []).filter(
@@ -151,8 +166,8 @@ function AssignedPullRequestRow({
       return;
     }
     Dialog.alert(
-      "CI logs",
-      checks.length ? "Choose a failed check." : "No failed check links are available.",
+      gt("CI logs"),
+      checks.length ? gt("Choose a failed check.") : gt("No failed check links are available."),
       [
         ...checks.map((check) => ({
           text: check.name,
@@ -160,7 +175,7 @@ function AssignedPullRequestRow({
             if (check.url) void Linking.openURL(check.url);
           },
         })),
-        { text: "Cancel", style: "cancel" },
+        { text: gt("Cancel"), style: "cancel" },
       ],
     );
   };
@@ -185,7 +200,7 @@ function AssignedPullRequestRow({
       if (result._tag === "Failure") throw squashAtomCommandFailure(result);
       if (!result.value.isOnPullRequestHead)
         throw new Error(
-          "The checkout is not on the pull request head. Open the PR to inspect its checkout.",
+          gt("The checkout is not on the pull request head. Open the PR to inspect its checkout."),
         );
       await waitForComposerDraftsLoaded();
       const draftId = createNewTaskDraft({
@@ -206,8 +221,8 @@ function AssignedPullRequestRow({
     if (outcome._tag === "Failure") {
       const error = squashAtomCommandFailure(outcome);
       Dialog.alert(
-        "Couldn't create a thread",
-        error instanceof Error ? error.message : "Try again.",
+        gt("Couldn't create a thread"),
+        error instanceof Error ? error.message : gt("Try again."),
       );
     }
   };
@@ -215,14 +230,20 @@ function AssignedPullRequestRow({
   const can = (action: "ready" | "close") => writable && !busy && hostActions.has(action);
   const menu: MenuProps["actions"] = [
     ...(entry.isDraft
-      ? [{ id: "ready", title: "Mark ready for review", attributes: { disabled: !can("ready") } }]
+      ? [
+          {
+            id: "ready",
+            title: gt("Mark ready for review"),
+            attributes: { disabled: !can("ready") },
+          },
+        ]
       : []),
-    ...(entry.checksState === "failing" ? [{ id: "ci", title: "Go to CI logs" }] : []),
-    { id: "open", title: "Open" },
-    { id: "provider", title: "Open in Browser" },
+    ...(entry.checksState === "failing" ? [{ id: "ci", title: gt("Go to CI logs") }] : []),
+    { id: "open", title: gt("Open", { $context: "verb, opens the pull request" }) },
+    { id: "provider", title: gt("Open in Browser") },
     {
       id: "create",
-      title: preparing ? "Preparing checkout…" : "Create thread",
+      title: preparing ? gt("Preparing checkout…") : gt("Create thread"),
       attributes: { disabled: !projects.length || preparing },
       ...(projects.length > 1
         ? {
@@ -246,7 +267,11 @@ function AssignedPullRequestRow({
             },
           }),
     },
-    { id: "close", title: "Close PR", attributes: { destructive: true, disabled: !can("close") } },
+    {
+      id: "close",
+      title: gt("Close PR"),
+      attributes: { destructive: true, disabled: !can("close") },
+    },
   ];
   return (
     <Menu
@@ -268,14 +293,25 @@ function AssignedPullRequestRow({
           {entry.repository} #{entry.number}
         </Text>
         <Text className="text-xs text-muted-foreground">
-          {entry.isDraft ? "Draft" : "Open"} · CI {entry.checksState ?? "unknown"} ·{" "}
-          {entry.reviewDecision === "approved"
-            ? "Approved"
-            : entry.reviewDecision === "changes-requested"
-              ? "Changes requested"
-              : entry.reviewDecision === "review-required"
-                ? "Not approved"
-                : "Review unknown"}
+          {[
+            entry.isDraft
+              ? gt("Draft", { $context: "pull request state" })
+              : gt("Open", { $context: "pull request state" }),
+            entry.checksState === "passing"
+              ? gt("CI passing")
+              : entry.checksState === "failing"
+                ? gt("CI failing")
+                : entry.checksState === "pending"
+                  ? gt("CI pending")
+                  : gt("CI unknown"),
+            entry.reviewDecision === "approved"
+              ? gt("Approved", { $context: "review outcome" })
+              : entry.reviewDecision === "changes-requested"
+                ? gt("Changes requested")
+                : entry.reviewDecision === "review-required"
+                  ? gt("Not approved")
+                  : gt("Review unknown"),
+          ].join(" · ")}
         </Text>
       </View>
     </Menu>

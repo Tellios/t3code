@@ -1187,17 +1187,17 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "assigned-pull-requests",
-    title: "Show assigned PRs in sidebar",
+    title: msg("Show assigned PRs in sidebar"),
     to: "/settings/source-control",
     scope: "project",
-    searchTerms: ["pull requests assignee assigned sidebar settled"],
+    searchTerms: [msg("pull requests assignee assigned sidebar settled")],
   },
   {
     id: "default-branch",
-    title: "Default branch",
+    title: msg("Default branch"),
     to: "/settings/source-control",
     scope: "project",
-    searchTerms: ["override base branch repository automatic worktree pull request"],
+    searchTerms: [msg("override base branch repository automatic worktree pull request")],
   },
   {
     id: "automatic-pull",

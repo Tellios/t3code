@@ -163,6 +163,7 @@ const { title: _compactBrandTitle, ...compactBrandHeaderOptions } = getCompactBr
 const ROUTE_TITLES: Readonly<Record<string, string>> = {
   Settings: msg("Settings"),
   SettingsEnvironments: msg("Environments"),
+  SettingsDefaultBranch: msg("Default branch"),
   SettingsEnvironmentDetail: msg("Environment"),
   SettingsEnvironmentNewThreads: msg("Threads"),
   SettingsEnvironmentSourceControl: msg("Source control & issues"),
@@ -389,7 +390,7 @@ const SETTINGS_SCREENS = {
   }),
   SettingsDefaultBranch: createNativeStackScreen({
     screen: SettingsDefaultBranchRouteScreen,
-    options: settingsPage("Default branch"),
+    options: settingsPage(),
   }),
   SettingsScheduledTaskModel: createNativeStackScreen({
     screen: ScheduledTaskModelPickerRouteScreen,

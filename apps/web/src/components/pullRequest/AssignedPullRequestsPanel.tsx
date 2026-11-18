@@ -14,6 +14,7 @@ import {
 import { useNavigate } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
+import { T, useGT } from "gt-react";
 import { useState } from "react";
 import { useLiveRefresh } from "~/hooks/useLiveRefresh";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
@@ -57,6 +58,7 @@ export function AssignedPullRequestsPanel({ threadRef }: { threadRef: ScopedThre
   );
   const [visibleCount, setVisibleCount] = useState(10);
   const navigate = useNavigate();
+  const gt = useGT();
   useLiveRefresh(list.isPending ? null : () => list.refresh(), {
     enabled: expanded && targets.length > 0,
     key: `sidebar-assigned-prs:${JSON.stringify(targets)}`,
@@ -67,7 +69,7 @@ export function AssignedPullRequestsPanel({ threadRef }: { threadRef: ScopedThre
     ...(list.data?.errors.map((error) => `${error.projectTitle}: ${error.message}`) ?? []),
   ].filter(Boolean);
   return (
-    <section aria-label="Assigned pull requests" data-thread-selection-safe>
+    <section aria-label={gt("Assigned pull requests")} data-thread-selection-safe>
       <CollapsibleSectionHeader
         expanded={expanded}
         onClick={() => setExpanded(!expanded)}
@@ -78,26 +80,26 @@ export function AssignedPullRequestsPanel({ threadRef }: { threadRef: ScopedThre
           </span>
         }
       >
-        Pull Requests
+        <T>Pull Requests</T>
       </CollapsibleSectionHeader>
       {expanded ? (
         <div>
           {list.isPending && list.data === null ? (
             <p className="px-2 py-2 text-xs text-sidebar-muted-foreground">
-              Loading pull requests…
+              <T>Loading pull requests…</T>
             </p>
           ) : null}
           {errors.length > 0 ? (
             <div className="px-2 py-2 text-xs text-destructive">
               <p>{errors.join(" ")}</p>
               <Button size="xs" variant="ghost" onClick={() => list.refresh()}>
-                Retry
+                <T>Retry</T>
               </Button>
             </div>
           ) : null}
           {!list.isPending && errors.length === 0 && entries.length === 0 ? (
             <p className="px-2 py-2 text-xs text-sidebar-muted-foreground">
-              No open PRs assigned to you.
+              <T>No open PRs assigned to you.</T>
             </p>
           ) : null}
           {entries.slice(0, visibleCount).map((entry) => (
@@ -114,11 +116,11 @@ export function AssignedPullRequestsPanel({ threadRef }: { threadRef: ScopedThre
             disabled={list.isPending}
             onClick={() => list.refresh()}
           >
-            Refresh
+            <T>Refresh</T>
           </Button>
           {entries.length > visibleCount ? (
             <Button size="xs" variant="ghost" onClick={() => setVisibleCount(visibleCount + 10)}>
-              Show more
+              <T>Show more</T>
             </Button>
           ) : null}
           {list.data?.truncated ? (
@@ -132,7 +134,7 @@ export function AssignedPullRequestsPanel({ threadRef }: { threadRef: ScopedThre
                 })
               }
             >
-              View all assigned PRs
+              <T>View all assigned PRs</T>
             </Button>
           ) : null}
         </div>
@@ -150,6 +152,7 @@ function AssignedPullRequestRow({
   threadRef: ScopedThreadRef | null;
   refresh: () => void;
 }) {
+  const gt = useGT();
   const [open, setOpen] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
   const reference = pullRequestPanelReference(entry);
@@ -214,7 +217,7 @@ function AssignedPullRequestRow({
     try {
       await readLocalApi()?.shell.openExternal(url);
     } catch {
-      toastManager.add({ type: "error", title: "Could not open link" });
+      toastManager.add({ type: "error", title: gt("Could not open link") });
     }
   };
   const checks = entry.checksState ? pullRequestChecksStatePresentation(entry.checksState) : null;
@@ -239,18 +242,28 @@ function AssignedPullRequestRow({
               {entry.repository} #{entry.number}
             </span>
             <span className="flex flex-wrap items-center gap-x-2 text-xs text-sidebar-muted-foreground">
-              <span>{entry.isDraft ? "Draft" : "Open"}</span>
+              <span>
+                {entry.isDraft
+                  ? gt("Draft", { $context: "pull request state" })
+                  : gt("Open", { $context: "pull request state" })}
+              </span>
               <span className={checks?.toneClassName}>
-                {checks ? `CI ${entry.checksState}` : "CI unknown"}
+                {entry.checksState === "passing"
+                  ? gt("CI passing")
+                  : entry.checksState === "failing"
+                    ? gt("CI failing")
+                    : entry.checksState === "pending"
+                      ? gt("CI pending")
+                      : gt("CI unknown")}
               </span>
               <span>
                 {entry.reviewDecision === "approved"
-                  ? "Approved"
+                  ? gt("Approved", { $context: "review outcome" })
                   : entry.reviewDecision === "changes-requested"
-                    ? "Changes requested"
+                    ? gt("Changes requested")
                     : entry.reviewDecision === "review-required"
-                      ? "Not approved"
-                      : "Review unknown"}
+                      ? gt("Not approved")
+                      : gt("Review unknown")}
               </span>
             </span>
           </span>
@@ -258,7 +271,7 @@ function AssignedPullRequestRow({
         <MenuPopup align="start">
           {entry.isDraft ? (
             <MenuItem disabled={!can("ready")} onClick={() => void perform("ready")}>
-              Mark ready for review
+              <T>Mark ready for review</T>
             </MenuItem>
           ) : null}
           {entry.checksState === "failing" ? (
@@ -271,26 +284,36 @@ function AssignedPullRequestRow({
                     if (check.url) void openExternal(check.url);
                   }}
                 >
-                  {failedChecks.length === 1 ? "Go to CI logs" : `CI logs: ${check.name}`}
+                  {failedChecks.length === 1
+                    ? gt("Go to CI logs")
+                    : gt("CI logs: {check}", { check: check.name })}
                 </MenuItem>
               ))
             ) : (
               <MenuItem disabled>
-                Go to CI logs{checkQuery.isPending ? " (loading…)" : " (unavailable)"}
+                {checkQuery.isPending
+                  ? gt("Go to CI logs (loading…)")
+                  : gt("Go to CI logs (unavailable)")}
               </MenuItem>
             )
           ) : null}
-          <MenuItem onClick={openInternally}>Open</MenuItem>
-          <MenuItem onClick={() => void openExternal(entry.url)}>Open in Browser</MenuItem>
+          <MenuItem onClick={openInternally}>
+            <T context="verb, opens the pull request">Open</T>
+          </MenuItem>
+          <MenuItem onClick={() => void openExternal(entry.url)}>
+            <T>Open in Browser</T>
+          </MenuItem>
           {projects.length === 1 && projects[0] ? (
             <AssignedPullRequestCheckoutItem
               project={projects[0]}
               url={entry.url}
-              label="Create thread"
+              label={gt("Create thread")}
             />
           ) : projects.length > 1 ? (
             <Menu>
-              <MenuTrigger render={<MenuItem />}>Create thread</MenuTrigger>
+              <MenuTrigger render={<MenuItem />}>
+                <T>Create thread</T>
+              </MenuTrigger>
               <MenuPopup>
                 {projects.map((project) => (
                   <AssignedPullRequestCheckoutItem
@@ -303,24 +326,30 @@ function AssignedPullRequestRow({
               </MenuPopup>
             </Menu>
           ) : (
-            <MenuItem disabled>Create thread</MenuItem>
+            <MenuItem disabled>
+              <T>Create thread</T>
+            </MenuItem>
           )}
           <MenuSeparator />
           <MenuItem disabled={!can("close")} onClick={() => setConfirmClose(true)}>
-            Close PR
+            <T>Close PR</T>
           </MenuItem>
         </MenuPopup>
       </Menu>
       <AlertDialog open={confirmClose} onOpenChange={setConfirmClose}>
         <AlertDialogPopup>
           <AlertDialogHeader>
-            <AlertDialogTitle>Close pull request?</AlertDialogTitle>
+            <AlertDialogTitle>
+              <T>Close pull request?</T>
+            </AlertDialogTitle>
             <AlertDialogDescription>
               #{entry.number} · {entry.title}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+            <AlertDialogClose render={<Button variant="outline" />}>
+              <T>Cancel</T>
+            </AlertDialogClose>
             <Button
               variant="destructive"
               disabled={!can("close")}
@@ -329,7 +358,7 @@ function AssignedPullRequestRow({
                 void perform("close");
               }}
             >
-              Close PR
+              <T>Close PR</T>
             </Button>
           </AlertDialogFooter>
         </AlertDialogPopup>

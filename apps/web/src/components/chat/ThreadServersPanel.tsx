@@ -14,7 +14,7 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { T, useGT, Var } from "gt-react";
+import { msg, T, useGT, useMessages, Var } from "gt-react";
 import { m } from "~/i18n/messages";
 import {
   ChevronDownIcon,
@@ -69,20 +69,36 @@ const nxtvironPort = (instance: NxtvironInstance) =>
   instance.ports.http ?? Object.values(instance.ports)[0] ?? null;
 
 const NXTVIRON_STATE_LABEL: Record<NxtvironInstance["state"], string> = {
-  running: "Running",
-  stopped: "Paused",
-  missing: "Missing",
-  unavailable: "Unavailable",
+  running: msg("Running", { $context: "dev environment instance state" }),
+  stopped: msg("Paused", { $context: "dev environment instance state" }),
+  missing: msg("Missing", { $context: "dev environment instance state" }),
+  unavailable: msg("Unavailable", { $context: "dev environment instance state" }),
 };
 
 const NXTVIRON_ACTION_COPY: Record<
   NxtvironInstanceAction,
-  { readonly verb: string; readonly tooltip: string; readonly failure: string }
+  { readonly label: string; readonly tooltip: string; readonly failure: string }
 > = {
-  stop: { verb: "Stop", tooltip: "Stop instance", failure: "Could not stop instance" },
-  resume: { verb: "Resume", tooltip: "Resume instance", failure: "Could not resume instance" },
-  restart: { verb: "Restart", tooltip: "Restart instance", failure: "Could not restart instance" },
-  delete: { verb: "Delete", tooltip: "Delete instance", failure: "Could not delete instance" },
+  stop: {
+    label: msg("Stop {ref}"),
+    tooltip: msg("Stop instance"),
+    failure: msg("Could not stop instance"),
+  },
+  resume: {
+    label: msg("Resume {ref}"),
+    tooltip: msg("Resume instance"),
+    failure: msg("Could not resume instance"),
+  },
+  restart: {
+    label: msg("Restart {ref}"),
+    tooltip: msg("Restart instance"),
+    failure: msg("Could not restart instance"),
+  },
+  delete: {
+    label: msg("Delete {ref}"),
+    tooltip: msg("Delete instance"),
+    failure: msg("Could not delete instance"),
+  },
 };
 
 const ACTION_ICONS = {
@@ -104,6 +120,7 @@ export function ThreadServersPanel(props: ThreadServersPanelProps) {
 
 function ThreadServersList(props: ThreadServersPanelProps) {
   const gt = useGT();
+  const resolveMessage = useMessages();
   const servers = useThreadDiscoveredPorts(props);
   const instances = useThreadNxtvironInstances(props);
   const canOpen = useEnvironmentScope(props.environmentId, AuthPreviewOperateScope);
@@ -181,7 +198,10 @@ function ThreadServersList(props: ThreadServersPanelProps) {
                         input: { pid, port: server.port },
                       });
                       if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-                        reportFailure(gt("Could not stop server"), squashAtomCommandFailure(result));
+                        reportFailure(
+                          gt("Could not stop server"),
+                          squashAtomCommandFailure(result),
+                        );
                       }
                     },
                   },
@@ -197,7 +217,7 @@ function ThreadServersList(props: ThreadServersPanelProps) {
       return {
         key,
         title: ["nxtviron", instance.process, index].filter((part) => part !== null).join(" - "),
-        subtitle: NXTVIRON_STATE_LABEL[instance.state],
+        subtitle: resolveMessage(NXTVIRON_STATE_LABEL[instance.state]),
         url:
           instance.state !== "running"
             ? null
@@ -207,8 +227,8 @@ function ThreadServersList(props: ThreadServersPanelProps) {
               const copy = NXTVIRON_ACTION_COPY[action];
               return {
                 id: `${key}:${action}`,
-                label: `${copy.verb} ${instance.ref}`,
-                tooltip: copy.tooltip,
+                label: resolveMessage(copy.label, { ref: instance.ref }),
+                tooltip: resolveMessage(copy.tooltip),
                 destructive: action === "stop" || action === "delete",
                 icon: action,
                 run: async () => {
@@ -217,7 +237,7 @@ function ThreadServersList(props: ThreadServersPanelProps) {
                     input: { ref: instance.ref, action },
                   });
                   if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-                    reportFailure(copy.failure, squashAtomCommandFailure(result));
+                    reportFailure(resolveMessage(copy.failure), squashAtomCommandFailure(result));
                   }
                 },
               };

@@ -453,7 +453,9 @@ export function ProjectDefaultsSettings({ category }: { category: ProjectSetting
               settingKeys={["showAssignedPullRequests"]}
               mixed={mixedAssignedPullRequests}
               {...searchableSetting("assigned-pull-requests")}
-              description="Fetch open pull requests assigned to you from this project and show them beneath Settled."
+              description={gt(
+                "Fetch open pull requests assigned to you from this project and show them beneath Settled.",
+              )}
               control={
                 <Switch
                   checked={settings.showAssignedPullRequests}
@@ -470,7 +472,9 @@ export function ProjectDefaultsSettings({ category }: { category: ProjectSetting
               settingKeys={["defaultBranch"]}
               mixed={mixedDefaultBranch}
               {...searchableSetting("default-branch")}
-              description="Used for new worktrees, comparisons, pull request defaults, automatic pull, and worktree cleanup. Automatic follows the repository."
+              description={gt(
+                "Used for new worktrees, comparisons, pull request defaults, automatic pull, and worktree cleanup. Automatic follows the repository.",
+              )}
               control={
                 <DefaultBranchPicker
                   environmentId={target.environmentId}

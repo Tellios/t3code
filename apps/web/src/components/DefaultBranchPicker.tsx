@@ -1,5 +1,6 @@
 import type { EnvironmentId } from "@t3tools/contracts";
 import { defaultBranchOptions } from "@t3tools/shared/git";
+import { T, useGT } from "gt-react";
 import { ChevronDownIcon } from "lucide-react";
 import { useState } from "react";
 
@@ -18,6 +19,7 @@ export function DefaultBranchPicker(props: {
   readonly mixed: boolean;
   readonly onChange: (branch: string | null) => void;
 }) {
+  const gt = useGT();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const branches = usePaginatedBranches({
@@ -42,10 +44,12 @@ export function DefaultBranchPicker(props: {
     );
   const items = ["", ...options.map((branch) => branch.name)];
   const label = props.mixed
-    ? "Mixed"
+    ? gt("Mixed", { $context: "projects have different values for a setting" })
     : props.value === null
-      ? "Automatic"
-      : `${props.value}${unavailable ? " (unavailable)" : ""}`;
+      ? gt("Automatic", { $context: "default branch setting" })
+      : unavailable
+        ? gt("{branch} (unavailable)", { branch: props.value })
+        : props.value;
   const select = (value: string) => {
     props.onChange(value || null);
     setOpen(false);
@@ -71,7 +75,7 @@ export function DefaultBranchPicker(props: {
       statusText={
         branches.error ??
         selected.error ??
-        (branches.isPending && branches.data === null ? "Loading branches…" : null)
+        (branches.isPending && branches.data === null ? gt("Loading branches…") : null)
       }
       popupProps={{ align: "end", side: "bottom", className: "flex w-80 flex-col" }}
       renderItem={(name, index) => {
@@ -85,13 +89,13 @@ export function DefaultBranchPicker(props: {
           />
         ) : (
           <ComboboxItem value="" index={index} onClick={() => select("")}>
-            Automatic
+            <T context="default branch setting">Automatic</T>
           </ComboboxItem>
         );
       }}
     >
       <ComboboxTrigger
-        aria-label="Default branch"
+        aria-label={gt("Default branch")}
         className="w-full max-w-64"
         render={<Button variant="outline" size="sm" />}
       >

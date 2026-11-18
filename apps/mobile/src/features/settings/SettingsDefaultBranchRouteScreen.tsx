@@ -1,6 +1,7 @@
 import { useNavigation } from "@react-navigation/native";
 import { AuthSettingsWriteScope } from "@t3tools/contracts";
 import { defaultBranchOptions } from "@t3tools/shared/git";
+import { T, useGT } from "gt-react-native";
 import { useState } from "react";
 import { View } from "react-native";
 
@@ -40,11 +41,12 @@ function useDefaultBranchProject() {
     targets.some(
       (target) => !readEnvironmentScope(target.environment.environmentId, AuthSettingsWriteScope),
     ) ||
-    managedSettingReason(targets, "defaultBranch") !== undefined;
+    managedSettingReason(targets, ["defaultBranch"]) !== undefined;
   return { targets, reference, project, mixed, disabled };
 }
 
 export function DefaultBranchSettingsRow(props: { readonly disabled: boolean }) {
+  const gt = useGT();
   const navigation = useNavigation();
   const { reference, project, mixed } = useDefaultBranchProject();
   const value = reference?.settings.defaultBranch ?? null;
@@ -65,13 +67,15 @@ export function DefaultBranchSettingsRow(props: { readonly disabled: boolean }) 
   return (
     <SettingsRow
       icon="arrow.triangle.branch"
-      label="Default branch"
+      label={gt("Default branch")}
       value={
         mixed
-          ? "Mixed"
+          ? gt("Mixed", { $context: "projects have different values for a setting" })
           : value === null
-            ? "Automatic"
-            : `${value}${unavailable ? " (unavailable)" : ""}`
+            ? gt("Automatic", { $context: "default branch setting" })
+            : unavailable
+              ? gt("{branch} (unavailable)", { branch: value })
+              : value
       }
       disabled={props.disabled}
       onPress={() => navigation.navigate("SettingsDefaultBranch")}
@@ -80,6 +84,7 @@ export function DefaultBranchSettingsRow(props: { readonly disabled: boolean }) 
 }
 
 export function SettingsDefaultBranchRouteScreen() {
+  const gt = useGT();
   const navigation = useNavigation();
   const { targets, reference, project, mixed, disabled } = useDefaultBranchProject();
   const write = useSettingsWriter();
@@ -102,14 +107,14 @@ export function SettingsDefaultBranchRouteScreen() {
   };
   return (
     <BranchPickerScreen
-      title="Default branch"
+      title={gt("Default branch")}
       project={project}
       branches={defaultBranchOptions(branches.refs, branches.data?.primaryRemoteName ?? null)}
       selectedBranchName={mixed ? "" : (reference?.settings.defaultBranch ?? "")}
       query={query}
       onQueryChange={setQuery}
       loading={query !== debouncedQuery || (branches.isPending && branches.data === null)}
-      error={project ? branches.error : "This project is no longer available."}
+      error={project ? branches.error : gt("This project is no longer available.")}
       refreshing={branches.isFetchingNextPage}
       hasMore={branches.data?.nextCursor != null}
       onRefresh={branches.refresh}
@@ -119,12 +124,14 @@ export function SettingsDefaultBranchRouteScreen() {
       header={
         <View className="mb-3 gap-3">
           <Text className="text-sm text-foreground-muted">
-            Used for new worktrees, comparisons, pull request defaults, automatic pull, and worktree
-            cleanup.
+            <T>
+              Used for new worktrees, comparisons, pull request defaults, automatic pull, and
+              worktree cleanup.
+            </T>
           </Text>
           <ListChoiceRow
-            label="Automatic"
-            description="Follow the repository's default branch."
+            label={gt("Automatic", { $context: "default branch setting" })}
+            description={gt("Follow the repository's default branch.")}
             selected={!mixed && reference?.settings.defaultBranch === null}
             disabled={disabled || saving}
             onPress={() => void select(null)}
