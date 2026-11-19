@@ -308,6 +308,11 @@ Bytecode preparation also runs packaged Electron and requires GTK, NSS, ALSA, an
 Install Rust 1.95 or newer through [rustup](https://rust-lang.org/install), using the stable
 toolchain as release CI does.
 The packaged ELF compatibility check uses binutils’ `readelf`, included by the C/C++ toolchain.
+Build distributable artifacts on Ubuntu 24.04, which matches the release CI glibc ceiling of
+2.39. For local artifacts on a newer Linux host, run
+`T3CODE_DESKTOP_ALLOW_NEWER_GLIBC=1 vp run dist:desktop:linux`. The build still scans the
+binaries and writes the measured glibc requirement to the `.deb` dependencies. CI always
+enforces the ceiling.
 
 Ubuntu 24.04 and Debian 13:
 

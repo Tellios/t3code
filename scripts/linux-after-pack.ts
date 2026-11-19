@@ -22,7 +22,8 @@ interface AfterPackContext {
 export default async function afterPack(context: AfterPackContext): Promise<void> {
   await prepareServerCompileCache(context);
   await removeSharedWriteAccess(context.appOutDir);
-  const { minimum } = await scanGlibcNeeds(context.appOutDir);
+  const allowNewerGlibc = !process.env.CI && process.env.T3CODE_DESKTOP_ALLOW_NEWER_GLIBC === "1";
+  const { minimum } = await scanGlibcNeeds(context.appOutDir, { allowNewerGlibc });
   for (const target of context.targets) {
     if (target.name !== "deb") continue;
     if (!target.options || !Array.isArray(target.options.depends)) {
