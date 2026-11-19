@@ -4864,46 +4864,64 @@ it.layer(layerGitManagerTest)("GitManager", (it) => {
       }),
   );
 
-  it.effect("creates a fork PR from origin into the upstream remote the provider targets", () =>
-    Effect.gen(function* () {
-      const repoDir = yield* makeTempDir("t3code-git-manager-");
-      yield* initRepo(repoDir);
-      const forkDir = yield* createBareRemote();
-      yield* runGit(repoDir, ["remote", "add", "origin", forkDir]);
-      yield* runGit(repoDir, [
-        "remote",
-        "add",
-        "upstream",
-        "git@github.com:pingdotgg/codething-mvp.git",
-      ]);
-      yield* runGit(repoDir, ["config", "remote.upstream.gh-resolved", "base"]);
-      yield* runGit(repoDir, ["checkout", "-b", "feature/fork-only"]);
-      NodeFS.writeFileSync(NodePath.join(repoDir, "fork-only.txt"), "fork only\n");
-      yield* runGit(repoDir, ["add", "fork-only.txt"]);
-      yield* runGit(repoDir, ["commit", "-m", "Fork-only commit"]);
-      yield* runGit(repoDir, ["push", "-u", "origin", "feature/fork-only"]);
-      yield* configureVisibleRemoteUrlWithLocalRewrite(
-        repoDir,
-        "origin",
-        "git@github.com:octocat/codething-mvp.git",
-        forkDir,
-      );
+  it.effect.each(["fork as origin", "separate push URL"] as const)(
+    "creates a fork PR into the upstream repository the provider targets (%s)",
+    (layout) =>
+      Effect.gen(function* () {
+        const repoDir = yield* makeTempDir("t3code-git-manager-");
+        yield* initRepo(repoDir);
+        const forkDir = yield* createBareRemote();
+        const fetchDir = layout === "separate push URL" ? yield* createBareRemote() : forkDir;
+        yield* runGit(repoDir, ["remote", "add", "origin", fetchDir]);
+        yield* runGit(repoDir, [
+          "remote",
+          "add",
+          "upstream",
+          "git@github.com:pingdotgg/codething-mvp.git",
+        ]);
+        yield* runGit(repoDir, ["config", "remote.upstream.gh-resolved", "base"]);
+        yield* runGit(repoDir, ["checkout", "-b", "feature/fork-only"]);
+        NodeFS.writeFileSync(NodePath.join(repoDir, "fork-only.txt"), "fork only\n");
+        yield* runGit(repoDir, ["add", "fork-only.txt"]);
+        yield* runGit(repoDir, ["commit", "-m", "Fork-only commit"]);
+        yield* runGit(repoDir, ["push", "-u", "origin", "feature/fork-only"]);
+        const forkUrl = "git@github.com:octocat/codething-mvp.git";
+        if (layout === "separate push URL") {
+          yield* configureVisibleRemoteUrlWithLocalRewrite(
+            repoDir,
+            "origin",
+            "git@github.com:pingdotgg/codething-mvp.git",
+            fetchDir,
+          );
+          yield* runGit(repoDir, ["config", "remote.origin.pushurl", forkUrl]);
+          yield* runGit(repoDir, ["config", `url.${forkDir}.insteadOf`, forkUrl]);
+        } else {
+          yield* configureVisibleRemoteUrlWithLocalRewrite(repoDir, "origin", forkUrl, forkDir);
+        }
 
-      const { service, calls } = createFakeSourceControlProvider({ prListSequence: [[], []] });
-      const { manager } = yield* makeManager({
-        sourceControlProvider: {
-          ...service,
-          createsChangeRequestsIn: ({ repository }) =>
-            Effect.succeed(repository === "pingdotgg/codething-mvp"),
-        },
-      });
-      const result = yield* runStackedAction(manager, { cwd: repoDir, action: "create_pr" });
+        const { service, calls } = createFakeSourceControlProvider({ prListSequence: [[], []] });
+        const { manager } = yield* makeManager({
+          sourceControlProvider: {
+            ...service,
+            createsChangeRequestsIn: ({ repository }) =>
+              Effect.succeed(repository === "pingdotgg/codething-mvp"),
+          },
+        });
+        const result = yield* runStackedAction(manager, { cwd: repoDir, action: "create_pr" });
 
-      expect(result.pr.status).toBe("created");
-      expect(created(calls)).toEqual([
-        { baseRefName: "main", headSelector: "octocat:feature/fork-only" },
-      ]);
-    }),
+        expect(result.pr.status).toBe("created");
+        expect(created(calls)).toEqual([
+          { baseRefName: "main", headSelector: "octocat:feature/fork-only" },
+        ]);
+        const published = yield* runGit(repoDir, [
+          "ls-remote",
+          "--exit-code",
+          forkDir,
+          "refs/heads/feature/fork-only",
+        ]);
+        const head = yield* runGit(repoDir, ["rev-parse", "HEAD"]);
+        expect(published.stdout.trim().split("\t")[0]).toBe(head.stdout.trim());
+      }),
   );
 
   it.effect("commit_push_pr publishes the default branch to the push remote's fork", () =>

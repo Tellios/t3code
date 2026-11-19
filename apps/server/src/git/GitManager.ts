@@ -729,12 +729,12 @@ export const make = Effect.gen(function* () {
 
   const sourceControlProvider = (cwd: string) => sourceControlProviders.resolve({ cwd });
   // Git fetches from a remote's first URL; `config --get` returns the last of several.
-  const readRemoteUrl = (cwd: string, remoteName: string) =>
+  const readRemoteUrl = (cwd: string, remoteName: string, key: "url" | "pushurl" = "url") =>
     gitCore
       .execute({
         operation: "GitManager.readRemoteUrl",
         cwd,
-        args: ["config", "--get-all", `remote.${remoteName}.url`],
+        args: ["config", "--get-all", `remote.${remoteName}.${key}`],
         allowNonZeroExit: true,
       })
       .pipe(Effect.map((result) => result.stdout.split("\n", 1)[0]?.trim() || null));
@@ -1608,6 +1608,7 @@ export const make = Effect.gen(function* () {
   const resolveRemoteRepositoryContext = Effect.fn("resolveRemoteRepositoryContext")(function* (
     cwd: string,
     remoteName: string | null,
+    pushUrl?: string | null,
   ) {
     if (!remoteName) {
       return {
@@ -1618,7 +1619,7 @@ export const make = Effect.gen(function* () {
       };
     }
 
-    const remoteUrl = yield* readRemoteUrlNullable(cwd, remoteName);
+    const remoteUrl = pushUrl ?? (yield* readRemoteUrlNullable(cwd, remoteName));
     let repositoryNameWithOwner = parseRepositoryNameWithOwnerFromRemoteUrl(remoteUrl);
     if (
       remoteUrl !== null &&
@@ -1642,14 +1643,18 @@ export const make = Effect.gen(function* () {
     };
   });
 
-  const resolveHeadAndOriginContexts = (cwd: string, remoteName: string | null) =>
-    remoteName === "origin"
+  const resolveHeadAndOriginContexts = (
+    cwd: string,
+    remoteName: string | null,
+    pushUrl: string | null,
+  ) =>
+    remoteName === "origin" && pushUrl === null
       ? resolveRemoteRepositoryContext(cwd, "origin").pipe(
           Effect.map((origin) => [origin, origin] as const),
         )
       : Effect.all(
           [
-            resolveRemoteRepositoryContext(cwd, remoteName),
+            resolveRemoteRepositoryContext(cwd, remoteName, pushUrl),
             resolveRemoteRepositoryContext(cwd, "origin"),
           ],
           { concurrency: "unbounded" },
@@ -1657,7 +1662,12 @@ export const make = Effect.gen(function* () {
 
   const resolveBranchHeadContext = Effect.fn("resolveBranchHeadContext")(function* (
     cwd: string,
-    details: { branch: string; upstreamRef: string | null; remoteName?: string },
+    details: {
+      branch: string;
+      upstreamRef: string | null;
+      remoteName?: string;
+      usePushUrl?: boolean;
+    },
   ) {
     const branchRemote =
       details.remoteName ??
@@ -1671,9 +1681,12 @@ export const make = Effect.gen(function* () {
     const shouldProbeLocalBranchSelector =
       headBranchFromUpstream.length === 0 || headBranch === details.branch;
 
+    const pushUrl =
+      details.usePushUrl && remoteName ? yield* readRemoteUrl(cwd, remoteName, "pushurl") : null;
     const [remoteRepository, originRepository] = yield* resolveHeadAndOriginContexts(
       cwd,
       remoteName,
+      pushUrl,
     );
 
     // With no origin to compare against, the only remote is the repository change requests
@@ -2427,6 +2440,7 @@ export const make = Effect.gen(function* () {
       branch: status.branch,
       upstreamRef: `${target.remoteName}/${target.branchName}`,
       remoteName: target.remoteName,
+      usePushUrl: true,
     });
     if (headContext.isCrossRepository) return;
     const { baseBranch } = yield* resolvePrBase(
@@ -2471,12 +2485,12 @@ export const make = Effect.gen(function* () {
       });
     }
 
-    // A configured push remote receives the commits while the branch keeps
-    // tracking its upstream, so the PR head is the push remote's branch.
-    const headContext = yield* resolveBranchHeadContext(
-      cwd,
-      pushRemoteRef ? { branch, ...pushRemoteRef } : { branch, upstreamRef: details.upstreamRef },
-    );
+    const headContext = yield* resolveBranchHeadContext(cwd, {
+      branch,
+      upstreamRef: details.upstreamRef,
+      ...pushRemoteRef,
+      usePushUrl: true,
+    });
 
     const existing = yield* findOpenPr(cwd, headContext);
     if (existing) {
@@ -3520,7 +3534,9 @@ export const make = Effect.gen(function* () {
           (input.action === "create_pr" &&
             (!initialStatus.hasUpstream ||
               initialStatus.aheadCount > 0 ||
-              pushTarget?.viaPushRemote === true));
+              pushTarget?.viaPushRemote === true ||
+              (pushTarget !== null &&
+                (yield* readRemoteUrl(input.cwd, pushTarget.remoteName, "pushurl")) !== null)));
         const wantsPr = input.action === "create_pr" || input.action === "commit_push_pr";
 
         if (input.featureBranch && !wantsCommit) {
