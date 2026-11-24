@@ -289,7 +289,7 @@ export function changeDraftProject(
 export function createDraft(
   projectId: ProjectId | null,
   modelSelection: ModelSelection | null,
-  defaultBranch = "main",
+  defaultBranch = "",
 ): ScheduledTaskDraft {
   return {
     task: null,
@@ -322,7 +322,7 @@ export function editDraft(task: ScheduledTask): ScheduledTaskDraft {
     schedule: scheduleDraftForTask(task),
     threadMode: scheduledTaskThreadMode(task),
     workspace: task.workspaceStrategy.type,
-    baseRef: task.workspaceStrategy.type === "worktree" ? task.workspaceStrategy.baseRef : "main",
+    baseRef: task.workspaceStrategy.type === "worktree" ? task.workspaceStrategy.baseRef : "",
     checkoutPath:
       task.workspaceStrategy.type === "existing_worktree"
         ? task.workspaceStrategy.worktreePath

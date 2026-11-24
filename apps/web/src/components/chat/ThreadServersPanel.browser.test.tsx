@@ -11,6 +11,38 @@ const mocks = vi.hoisted(() => ({
   servers: [] as ReadonlyArray<DiscoveredLocalServer>,
   instances: [] as ReadonlyArray<NxtvironInstance>,
   run: vi.fn(),
+  remote: false,
+}));
+
+const shell = vi.hoisted(() => ({ openExternal: vi.fn(async (_url: string) => undefined) }));
+
+vi.mock("~/env", () => ({ isElectron: true }));
+vi.mock(import("../../state/portForwards"), async (importOriginal) => ({
+  ...(await importOriginal()),
+  canForwardPorts: () => mocks.remote,
+  useForwardLocality: (environmentId) => (environmentId === null ? "unknown" : "remote"),
+  usePortForwards: () => [],
+  forwardPort: (async (environmentId: string, remotePort: number) => ({
+    environmentId,
+    remotePort,
+    localPort: 45000,
+  })) as never,
+}));
+vi.mock(import("../../state/session"), async (importOriginal) => ({
+  ...(await importOriginal()),
+  useEnvironmentScope: () => true,
+}));
+vi.mock(import("../../state/environments"), async (importOriginal) => ({
+  ...(await importOriginal()),
+  useEnvironment: (() => ({
+    connection: { phase: "connected" },
+    entry: { target: { _tag: "BearerConnectionTarget", connectionId: "saved:remote" } },
+    serverConfig: null,
+  })) as never,
+}));
+vi.mock(import("../../localApi"), async (importOriginal) => ({
+  ...(await importOriginal()),
+  readLocalApi: (() => ({ shell })) as never,
 }));
 
 vi.mock(import("../../portDiscoveryState"), async (importOriginal) => ({
@@ -38,9 +70,12 @@ import { render } from "../../../test/render";
 import { ThreadServersPanel } from "./ThreadServersPanel";
 
 const setup = (input: {
+  readonly remote?: boolean;
   readonly servers?: ReadonlyArray<DiscoveredLocalServer>;
   readonly instances?: ReadonlyArray<NxtvironInstance>;
 }) => {
+  shell.openExternal.mockClear();
+  mocks.remote = input.remote ?? false;
   mocks.servers = input.servers ?? [];
   mocks.instances = input.instances ?? [];
   mocks.run.mockReset();
@@ -160,5 +195,26 @@ it("offers each nxtviron instance the actions its state allows", async () => {
       environmentId: EnvironmentId.make("env"),
       input: { ref: "api#main", action: "restart" },
     }),
+  );
+});
+
+it("opens a remote server in the system browser through the forward a modified click starts", async () => {
+  setup({
+    remote: true,
+    servers: [
+      {
+        host: "127.0.0.1",
+        pid: 7,
+        port: 3000,
+        url: "http://localhost:3000",
+        terminal: null,
+        processName: "node",
+      },
+    ],
+  });
+  await using _screen = await render(panel("a"));
+  await page.getByText("localhost:3000", { exact: true }).click({ modifiers: ["ControlOrMeta"] });
+  await vi.waitFor(() =>
+    expect(shell.openExternal).toHaveBeenCalledWith("http://localhost:45000/"),
   );
 });
