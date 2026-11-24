@@ -6,6 +6,7 @@ import { createWorkspaceFocusController, workspaceAreaProps } from "../lib/works
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import {
   DEFAULT_CLIENT_SETTINGS,
+  DEFAULT_SERVER_SETTINGS,
   EnvironmentId,
   type LocalApi,
   ProjectId,
@@ -533,6 +534,7 @@ describe("sidebar settled pagination", () => {
         [
           activeProject.environmentId,
           {
+            settings: DEFAULT_SERVER_SETTINGS,
             scratchWorkspaceRoot: null,
             shellThreadFamilies: false,
           } as unknown as EnvironmentServerConfig,
