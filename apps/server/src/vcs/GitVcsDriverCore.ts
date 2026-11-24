@@ -3209,6 +3209,17 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         value: `refs/heads/${publishBranch}`,
       });
       yield* writeConfigValue({ cwd, key: `branch.${branch}.remote`, value: remoteName });
+      const tracking = yield* executeGitWithStableDiagnostics(
+        "GitVcsDriver.recordPushedUpstream.verify",
+        cwd,
+        ["rev-parse", "--verify", "--quiet", "--end-of-options", `${branch}@{upstream}`],
+        { allowNonZeroExit: true },
+      );
+      if (tracking.exitCode !== 0) {
+        // A single-branch fetch mapping can leave a successful push without a tracking ref.
+        yield* fetchRemoteTrackingBranch({ cwd, remoteName, remoteBranch: publishBranch });
+        yield* setBranchUpstream({ cwd, branch, remoteName, remoteBranch: publishBranch });
+      }
       // Matches what `push -u` sets for a remote upstream.
       const autoSetupRebase = yield* readConfigValue(cwd, "branch.autoSetupRebase");
       if (autoSetupRebase === "always" || autoSetupRebase === "remote") {
@@ -3365,6 +3376,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
 
     const hasNoLocalDelta = details.aheadCount === 0 && details.behindCount === 0;
     const destination = yield* resolvePushDestination(cwd, branch, details.hasUpstream);
+    let skipUpload = false;
     if (hasNoLocalDelta && details.hasUpstream) {
       if (!destination?.pushRemote) {
         // The tracking ref reflects the fetch URL, so it says nothing about a separate push URL.
@@ -3411,18 +3423,11 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         }
 
         // The configured diff base can contain HEAD while the publish branch is still behind.
-        if (
+        skipUpload =
           (yield* remoteRefContainsHead(
             cwd,
             `${destination.remoteName}/${destination.branchName}`,
-          )) &&
-          (yield* pushesOnlyToFetchUrl(cwd, destination.remoteName))
-        ) {
-          return {
-            status: "skipped_up_to_date" as const,
-            branch,
-          };
-        }
+          )) && (yield* pushesOnlyToFetchUrl(cwd, destination.remoteName));
       }
     }
 
@@ -3460,16 +3465,18 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
           });
         }
       }
-      yield* executeGitWithStableDiagnostics(
-        upstream
-          ? "GitVcsDriver.pushCurrentBranch.pushOwnBranch"
-          : "GitVcsDriver.pushCurrentBranch.pushWithUpstream",
-        cwd,
-        ["push", "--", remoteName, `HEAD:refs/heads/${publishBranch}`],
-        { timeoutMs: null },
-      );
+      if (!skipUpload) {
+        yield* executeGitWithStableDiagnostics(
+          upstream
+            ? "GitVcsDriver.pushCurrentBranch.pushOwnBranch"
+            : "GitVcsDriver.pushCurrentBranch.pushWithUpstream",
+          cwd,
+          ["push", "--", remoteName, `HEAD:refs/heads/${publishBranch}`],
+          { timeoutMs: null },
+        );
+      }
       return {
-        status: "pushed" as const,
+        status: skipUpload ? ("skipped_up_to_date" as const) : ("pushed" as const),
         branch,
         upstreamBranch: `${remoteName}/${publishBranch}`,
         setUpstream: yield* recordPushedUpstream(cwd, branch, remoteName, publishBranch),

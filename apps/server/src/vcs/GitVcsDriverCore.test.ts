@@ -9189,9 +9189,13 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
       }),
     );
 
-    it.effect.each([false, true])(
-      "pushes with upstream setup and skips when already up to date (autoSetupMerge=%s)",
-      (autoSetupMerge) =>
+    it.effect.each([
+      { autoSetupMerge: false, restrictedFetch: false },
+      { autoSetupMerge: true, restrictedFetch: false },
+      { autoSetupMerge: false, restrictedFetch: true },
+    ])(
+      "pushes with upstream setup and skips when already up to date (autoSetupMerge=$autoSetupMerge, restrictedFetch=$restrictedFetch)",
+      ({ autoSetupMerge, restrictedFetch }) =>
         Effect.gen(function* () {
           const cwd = yield* makeTmpDir();
           const remote = yield* makeTmpDir("git-remote-");
@@ -9201,6 +9205,14 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
           }
           yield* git(remote, ["init", "--bare"]);
           yield* git(cwd, ["remote", "add", "origin", remote]);
+          if (restrictedFetch) {
+            yield* git(cwd, [
+              "config",
+              "remote.origin.fetch",
+              `+refs/heads/${initialBranch}:refs/remotes/origin/${initialBranch}`,
+            ]);
+            yield* git(cwd, ["push", "origin", initialBranch]);
+          }
           yield* (yield* GitVcsDriver.GitVcsDriver).createRef({
             cwd,
             refName: "feature/push",
@@ -9423,7 +9435,16 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
 
           yield* git(cwd, ["branch", "--unset-upstream"]);
           const skipped = yield* driver.pushCurrentBranch(cwd, null);
-          assert.deepInclude(skipped, { status: "skipped_up_to_date", branch });
+          assert.deepInclude(skipped, {
+            status: "skipped_up_to_date",
+            branch,
+            upstreamBranch: "origin/feature/push",
+            setUpstream: true,
+          });
+          assert.equal(
+            yield* git(cwd, ["rev-parse", "--symbolic-full-name", "@{upstream}"]),
+            "refs/remotes/origin/feature/push",
+          );
 
           yield* writeTextFile(cwd, "remote.txt", "remote update\n");
           yield* git(cwd, ["add", "-A"]);
@@ -9435,8 +9456,14 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
             "refs/heads/feature/push",
           ]);
           yield* git(cwd, ["reset", "--hard", head]);
+          yield* git(cwd, ["branch", "--unset-upstream"]);
           const skippedBehindRemote = yield* driver.pushCurrentBranch(cwd, null);
-          assert.deepInclude(skippedBehindRemote, { status: "skipped_up_to_date", branch });
+          assert.deepInclude(skippedBehindRemote, {
+            status: "skipped_up_to_date",
+            branch,
+            upstreamBranch: "origin/feature/push",
+            setUpstream: true,
+          });
           assert.equal(
             yield* git(originRemote, ["--git-dir=.", "rev-parse", "refs/heads/feature/push"]),
             publishedHead,
@@ -9444,6 +9471,7 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
 
           const pushOnlyRemote = yield* makeTmpDir("git-push-only-remote-");
           yield* git(pushOnlyRemote, ["init", "--bare"]);
+          yield* git(cwd, ["branch", "--unset-upstream"]);
           yield* git(cwd, ["remote", "set-url", "--push", "origin", pushOnlyRemote]);
           const pushedToPushUrl = yield* driver.pushCurrentBranch(cwd, null);
           assert.deepInclude(pushedToPushUrl, { status: "pushed", branch });
