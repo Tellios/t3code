@@ -11,12 +11,22 @@ import {
 } from "./rightPanelStore";
 import { subscribeSharedPanelTabs } from "./sharedPanelTabs";
 
-type PanelThread = Pick<EnvironmentThreadShell, "environmentId" | "id" | "lineage">;
+type PanelThread = Pick<
+  EnvironmentThreadShell,
+  "environmentId" | "id" | "lineage" | "worktreePath" | "createdAt" | "delegatedFrom"
+>;
 
-function thread(id: string, parent: string | null = null): PanelThread {
+function thread(
+  id: string,
+  parent: string | null = null,
+  worktree: { path: string; createdAt: string } | null = null,
+): PanelThread {
   return {
     environmentId: EnvironmentId.make("local"),
     id: ThreadId.make(id),
+    worktreePath: worktree?.path ?? null,
+    createdAt: worktree?.createdAt ?? "2026-01-01T00:00:00.000Z",
+    delegatedFrom: null,
     lineage: {
       parentThreadId: parent ? ThreadId.make(parent) : null,
       relationshipToParent: parent ? "fork" : null,
@@ -120,5 +130,45 @@ it("waits for missing parents and preserves existing links while excluding side 
     scopeThreadRef(EnvironmentId.make("remote"), ThreadId.make("remote")),
   ]) {
     expect(sharedRightPanelRef(ref)).toEqual(ref);
+  }
+});
+
+it("shares one panel across threads in the same worktree, anchored on the oldest", () => {
+  useRightPanelStore.setState({ byThreadKey: {} });
+  const local = EnvironmentId.make("local");
+  const ref = (id: string) => scopeThreadRef(local, ThreadId.make(id));
+  const store = useRightPanelStore.getState();
+  store.openFile(ref("second"), "second.ts");
+  const tree = (createdAt: string) => ({ path: "/wt/a", createdAt });
+  using sync = setup([
+    thread("second", null, tree("2026-01-02T00:00:00.000Z")),
+    thread("first", null, tree("2026-01-01T00:00:00.000Z")),
+    thread("elsewhere", null, { path: "/wt/b", createdAt: "2026-01-01T00:00:00.000Z" }),
+    thread("main-checkout"),
+    {
+      ...thread("delegated", null, tree("2026-01-03T00:00:00.000Z")),
+      delegatedFrom: {
+        environmentId: EnvironmentId.make("remote"),
+        threadId: ThreadId.make("x"),
+        title: "Parent",
+      },
+    },
+    {
+      ...thread("agent", "first", tree("2026-01-03T00:00:00.000Z")),
+      lineage: { ...thread("agent", "first").lineage, relationshipToParent: "subagent" },
+    },
+  ]);
+  expect(sharedRightPanelRef(ref("second"))).toEqual(ref("first"));
+  expect(
+    selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, ref("first")).surfaces,
+  ).toEqual([expect.objectContaining({ id: "file:second.ts" })]);
+  sync.update([
+    thread("first", null, tree("2026-01-01T00:00:00.000Z")),
+    thread("second", null, tree("2026-01-02T00:00:00.000Z")),
+    thread("third", null, tree("2026-01-04T00:00:00.000Z")),
+  ]);
+  expect(sharedRightPanelRef(ref("third"))).toEqual(ref("first"));
+  for (const id of ["elsewhere", "main-checkout", "delegated", "agent"]) {
+    expect(sharedRightPanelRef(ref(id))).toEqual(ref(id));
   }
 });

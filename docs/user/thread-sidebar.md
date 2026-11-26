@@ -31,6 +31,10 @@ that client, including live browser, terminal, and device sessions. Opening,
 reordering, or closing a tab affects both threads. The shared tabs survive reloads. Existing forks share tabs when you reopen the app;
 tabs already open in either thread are combined.
 
+Threads that work in the same worktree share panel tabs the same way, so a new thread
+on a worktree's branch picks up the browser, terminal, and device tabs already open
+there. Threads in the project's main checkout keep their own tabs.
+
 ### Start without a project
 
 A thread does not need a project. To start one without a project, click **or
